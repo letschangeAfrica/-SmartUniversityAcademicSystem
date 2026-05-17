@@ -22,7 +22,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import javafx.stage.FileChooser;
+import javafx.scene.chart.BarChart;
+import javafx.scene.chart.CategoryAxis;
+import javafx.scene.chart.NumberAxis;
+import javafx.scene.chart.XYChart;
 import smartuniversityacademicsystem.db.AttendanceDAO;
+import smartuniversityacademicsystem.db.EvaluationDAO;
+import smartuniversityacademicsystem.model.EvaluationFeedback;
+import smartuniversityacademicsystem.model.LecturerRating;
 import smartuniversityacademicsystem.model.AttendanceRecord;
 import smartuniversityacademicsystem.model.SessionRecord;
 
@@ -32,7 +39,8 @@ public class LecturerDashboard {
     private final User        user;
     private final LecturerDAO  dao   = new LecturerDAO();
     private final TimetableDAO  ttDao  = new TimetableDAO();
-    private final AttendanceDAO attDao = new AttendanceDAO();
+    private final AttendanceDAO  attDao  = new AttendanceDAO();
+    private final EvaluationDAO  evalDao = new EvaluationDAO();
     private final StackPane   contentArea = new StackPane();
     private Button            activeBtn;
 
@@ -95,12 +103,14 @@ public class LecturerDashboard {
         studentsBtn.setOnAction(e  -> { setActive(studentsBtn);  showAllStudents(); });
         timetableBtn.setOnAction(e -> { setActive(timetableBtn); showTimetable(); });
 
-        Button attendanceBtn = navButton("  Attendance");
-        attendanceBtn.setOnAction(e -> { setActive(attendanceBtn); showAttendance(); });
+        Button attendanceBtn  = navButton("  Attendance");
+        Button evaluationsBtn = navButton("  My Evaluations");
+        attendanceBtn.setOnAction(e  -> { setActive(attendanceBtn);  showAttendance(); });
+        evaluationsBtn.setOnAction(e -> { setActive(evaluationsBtn); showMyEvaluations(); });
 
         setActive(homeBtn);
 
-        VBox navBox = new VBox(4, homeBtn, coursesBtn, gradesBtn, studentsBtn, timetableBtn, attendanceBtn);
+        VBox navBox = new VBox(4, homeBtn, coursesBtn, gradesBtn, studentsBtn, timetableBtn, attendanceBtn, evaluationsBtn);
         navBox.setPadding(new Insets(8, 12, 8, 12));
 
         Region spacer = new Region();
@@ -494,6 +504,97 @@ public class LecturerDashboard {
     private String tableStyle() {
         return "-fx-background-color: #1E293B; -fx-text-fill: #F1F5F9;" +
                "-fx-border-color: #334155; -fx-border-radius: 8; -fx-background-radius: 8;";
+    }
+
+    // ── My Evaluations view ───────────────────────────────────────────────────
+
+    private void showMyEvaluations() {
+        VBox pane = new VBox(16);
+        pane.setPadding(new Insets(30));
+        pane.getChildren().add(sectionTitle("My Evaluations"));
+
+        HBox statsRow   = new HBox(16);
+        StackPane chartHolder = new StackPane();
+        chartHolder.setMinHeight(230);
+
+        // Feedback table (anonymous comments)
+        TableView<EvaluationFeedback> feedbackTable = new TableView<>();
+        feedbackTable.setStyle(tableStyle() + " -fx-font-size: 13px;");
+        feedbackTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        VBox.setVgrow(feedbackTable, Priority.ALWAYS);
+
+        TableColumn<EvaluationFeedback, String> ratCol = new TableColumn<>("Rating");
+        ratCol.setCellValueFactory(new PropertyValueFactory<>("ratingDisplay"));
+        ratCol.setMaxWidth(130);
+        ratCol.setCellFactory(tc -> new TableCell<EvaluationFeedback, String>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) { setText(null); return; }
+                setText(item);
+                setTextFill(Color.web("#F59E0B"));
+            }
+        });
+
+        TableColumn<EvaluationFeedback, String> dateCol = new TableColumn<>("Date");
+        dateCol.setCellValueFactory(new PropertyValueFactory<>("submittedDate"));
+        dateCol.setMaxWidth(110);
+
+        TableColumn<EvaluationFeedback, String> cmtCol = new TableColumn<>("Comment");
+        cmtCol.setCellValueFactory(new PropertyValueFactory<>("comment"));
+
+        feedbackTable.getColumns().addAll(ratCol, dateCol, cmtCol);
+
+        new Thread(() -> {
+            try {
+                LecturerRating stats    = evalDao.getLecturerStats(user.getId());
+                List<EvaluationFeedback> fb = evalDao.getLecturerFeedback(user.getId());
+                javafx.application.Platform.runLater(() -> {
+                    statsRow.getChildren().addAll(
+                        statCard("Average Rating",     stats.getAvgRatingDisplay(),           "#F59E0B"),
+                        statCard("Total Evaluations",  String.valueOf(stats.getTotalEvaluations()), "#2563EB"),
+                        statCard("Overall Score",      stats.getStarsDisplay(),               "#059669")
+                    );
+
+                    // Rating distribution BarChart
+                    CategoryAxis xAxis = new CategoryAxis();
+                    NumberAxis   yAxis = new NumberAxis();
+                    xAxis.setLabel("Stars");
+                    yAxis.setLabel("Count");
+                    BarChart<String, Number> chart = new BarChart<String, Number>(xAxis, yAxis);
+                    chart.setTitle("Rating Distribution");
+                    chart.setLegendVisible(false);
+                    chart.setPrefHeight(220);
+                    chart.setAnimated(false);
+
+                    XYChart.Series<String, Number> series = new XYChart.Series<String, Number>();
+                    series.getData().add(new XYChart.Data<String, Number>("1★", stats.getCount1()));
+                    series.getData().add(new XYChart.Data<String, Number>("2★", stats.getCount2()));
+                    series.getData().add(new XYChart.Data<String, Number>("3★", stats.getCount3()));
+                    series.getData().add(new XYChart.Data<String, Number>("4★", stats.getCount4()));
+                    series.getData().add(new XYChart.Data<String, Number>("5★", stats.getCount5()));
+                    chart.getData().add(series);
+                    chartHolder.getChildren().setAll(chart);
+
+                    feedbackTable.setItems(FXCollections.observableArrayList(fb));
+                });
+            } catch (Exception ex) {
+                javafx.application.Platform.runLater(() -> {
+                    Label err = new Label("Error: " + ex.getMessage());
+                    err.setTextFill(Color.web("#FCA5A5"));
+                    statsRow.getChildren().add(err);
+                });
+            }
+        }).start();
+
+        pane.getChildren().addAll(
+            statsRow,
+            sectionTitle("Rating Distribution"),
+            chartHolder,
+            sectionTitle("Student Feedback (Anonymous)"),
+            feedbackTable
+        );
+        setContent(pane);
     }
 
     // ── Attendance view ───────────────────────────────────────────────────────

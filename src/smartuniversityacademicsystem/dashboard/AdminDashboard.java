@@ -9,10 +9,16 @@ import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.text.*;
+import javafx.scene.chart.BarChart;
+import javafx.scene.chart.CategoryAxis;
+import javafx.scene.chart.NumberAxis;
+import javafx.scene.chart.XYChart;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import smartuniversityacademicsystem.db.AdminDAO;
 import smartuniversityacademicsystem.db.AttendanceDAO;
+import smartuniversityacademicsystem.db.EvaluationDAO;
+import smartuniversityacademicsystem.model.LecturerRating;
 import smartuniversityacademicsystem.db.TimetableDAO;
 import smartuniversityacademicsystem.model.*;
 import smartuniversityacademicsystem.scheduling.TimetableGenerator;
@@ -28,7 +34,8 @@ public class AdminDashboard {
     private final User     user;
     private final AdminDAO     dao   = new AdminDAO();
     private final TimetableDAO  ttDao  = new TimetableDAO();
-    private final AttendanceDAO attDao = new AttendanceDAO();
+    private final AttendanceDAO  attDao  = new AttendanceDAO();
+    private final EvaluationDAO  evalDao = new EvaluationDAO();
     private final StackPane contentArea = new StackPane();
     private Button activeBtn;
 
@@ -84,18 +91,20 @@ public class AdminDashboard {
         Button coursesBtn    = navButton("  Course Management");
         Button timetableBtn  = navButton("  Timetable");
         Button reportsBtn    = navButton("  Reports");
-        Button attendanceBtn = navButton("  Attendance");
+        Button attendanceBtn  = navButton("  Attendance");
+        Button evaluationsBtn = navButton("  Evaluations");
 
-        homeBtn.setOnAction(e       -> { setActive(homeBtn);       showHome(); });
-        usersBtn.setOnAction(e      -> { setActive(usersBtn);      showUsers(); });
-        coursesBtn.setOnAction(e    -> { setActive(coursesBtn);    showCourses(); });
-        timetableBtn.setOnAction(e  -> { setActive(timetableBtn);  showTimetableManager(); });
-        reportsBtn.setOnAction(e    -> { setActive(reportsBtn);    showReports(); });
-        attendanceBtn.setOnAction(e -> { setActive(attendanceBtn); showAttendanceOverview(); });
+        homeBtn.setOnAction(e        -> { setActive(homeBtn);        showHome(); });
+        usersBtn.setOnAction(e       -> { setActive(usersBtn);       showUsers(); });
+        coursesBtn.setOnAction(e     -> { setActive(coursesBtn);     showCourses(); });
+        timetableBtn.setOnAction(e   -> { setActive(timetableBtn);   showTimetableManager(); });
+        reportsBtn.setOnAction(e     -> { setActive(reportsBtn);     showReports(); });
+        attendanceBtn.setOnAction(e  -> { setActive(attendanceBtn);  showAttendanceOverview(); });
+        evaluationsBtn.setOnAction(e -> { setActive(evaluationsBtn); showEvaluationsOverview(); });
 
         setActive(homeBtn);
 
-        VBox navBox = new VBox(4, homeBtn, usersBtn, coursesBtn, timetableBtn, reportsBtn, attendanceBtn);
+        VBox navBox = new VBox(4, homeBtn, usersBtn, coursesBtn, timetableBtn, reportsBtn, attendanceBtn, evaluationsBtn);
         navBox.setPadding(new Insets(8, 12, 8, 12));
 
         Region spacer = new Region();
@@ -893,6 +902,93 @@ public class AdminDashboard {
         toolbar.setAlignment(Pos.CENTER_LEFT);
 
         pane.getChildren().addAll(sub, toolbar, statusLabel, table);
+        setContent(pane);
+    }
+
+    // ── Evaluations overview ──────────────────────────────────────────────────
+
+    private void showEvaluationsOverview() {
+        VBox pane = new VBox(16);
+        pane.setPadding(new Insets(30));
+        pane.getChildren().add(sectionTitle("Lecturer Evaluations"));
+
+        Label sub = new Label("Performance rankings based on anonymous student evaluations.");
+        sub.setFont(Font.font("Segoe UI", 13));
+        sub.setTextFill(Color.web("#94A3B8"));
+
+        StackPane chartHolder = new StackPane();
+        chartHolder.setMinHeight(230);
+
+        // Rankings table
+        TableView<LecturerRating> table = new TableView<>();
+        table.setStyle(tableStyle() + " -fx-font-size: 13px;");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        VBox.setVgrow(table, Priority.ALWAYS);
+
+        TableColumn<LecturerRating, String> nameCol = new TableColumn<>("Lecturer");
+        nameCol.setCellValueFactory(new PropertyValueFactory<>("lecturerName"));
+
+        TableColumn<LecturerRating, String> starsCol = new TableColumn<>("Stars");
+        starsCol.setCellValueFactory(new PropertyValueFactory<>("starsDisplay"));
+        starsCol.setMaxWidth(110);
+        starsCol.setCellFactory(tc -> new TableCell<LecturerRating, String>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) { setText(null); return; }
+                setText(item);
+                setTextFill(Color.web("#F59E0B"));
+            }
+        });
+
+        TableColumn<LecturerRating, String> avgCol = new TableColumn<>("Avg Rating");
+        avgCol.setCellValueFactory(new PropertyValueFactory<>("avgRatingDisplay"));
+        avgCol.setMaxWidth(140);
+
+        TableColumn<LecturerRating, String> totalCol = new TableColumn<>("Evaluations");
+        totalCol.setCellValueFactory(data ->
+            new javafx.beans.property.SimpleStringProperty(
+                String.valueOf(data.getValue().getTotalEvaluations())));
+        totalCol.setMaxWidth(110);
+
+        table.getColumns().addAll(nameCol, starsCol, avgCol, totalCol);
+
+        new Thread(() -> {
+            try {
+                List<LecturerRating> ratings = evalDao.getAllLecturerStats();
+                javafx.application.Platform.runLater(() -> {
+                    table.setItems(FXCollections.observableArrayList(ratings));
+
+                    // Average ratings BarChart
+                    CategoryAxis xAxis = new CategoryAxis();
+                    NumberAxis   yAxis = new NumberAxis(0, 5, 1);
+                    xAxis.setLabel("Lecturer");
+                    yAxis.setLabel("Avg Rating");
+                    BarChart<String, Number> chart = new BarChart<String, Number>(xAxis, yAxis);
+                    chart.setTitle("Average Rating by Lecturer");
+                    chart.setLegendVisible(false);
+                    chart.setPrefHeight(220);
+                    chart.setAnimated(false);
+
+                    XYChart.Series<String, Number> series = new XYChart.Series<String, Number>();
+                    for (LecturerRating lr : ratings) {
+                        String name = lr.getLecturerName();
+                        if (name.length() > 14) name = name.substring(0, 13) + "…";
+                        series.getData().add(new XYChart.Data<String, Number>(name, lr.getAvgRating()));
+                    }
+                    chart.getData().add(series);
+                    chartHolder.getChildren().setAll(chart);
+                });
+            } catch (Exception ex) {
+                javafx.application.Platform.runLater(() -> {
+                    Label err = new Label("Error: " + ex.getMessage());
+                    err.setTextFill(Color.web("#FCA5A5"));
+                    pane.getChildren().add(err);
+                });
+            }
+        }).start();
+
+        pane.getChildren().addAll(sub, chartHolder, sectionTitle("Performance Rankings"), table);
         setContent(pane);
     }
 

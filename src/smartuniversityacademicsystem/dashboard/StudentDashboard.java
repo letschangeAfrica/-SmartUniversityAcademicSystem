@@ -18,7 +18,9 @@ import smartuniversityacademicsystem.view.TimetableGridView;
 
 import java.util.List;
 import smartuniversityacademicsystem.db.AttendanceDAO;
+import smartuniversityacademicsystem.db.EvaluationDAO;
 import smartuniversityacademicsystem.model.AttendanceSummary;
+import smartuniversityacademicsystem.model.EvaluationRecord;
 
 public class StudentDashboard {
 
@@ -27,7 +29,8 @@ public class StudentDashboard {
     private final StudentDAO             dao    = new StudentDAO();
     private final TimetableDAO           ttDao  = new TimetableDAO();
     private final CourseRegistrationDAO  regDao  = new CourseRegistrationDAO();
-    private final AttendanceDAO          attDao  = new AttendanceDAO();
+    private final AttendanceDAO          attDao   = new AttendanceDAO();
+    private final EvaluationDAO          evalDao  = new EvaluationDAO();
     private final StackPane  contentArea = new StackPane();
 
     // sidebar button references for active state
@@ -92,6 +95,7 @@ public class StudentDashboard {
         Button gradesBtn     = navButton("  My Grades",      "grades");
         Button timetableBtn  = navButton("  Timetable",      "timetable");
         Button attendanceBtn = navButton("  My Attendance",  "attendance");
+        Button evaluateBtn   = navButton("  Evaluate",       "evaluate");
 
         homeBtn.setOnAction(e       -> { setActive(homeBtn);       showHome(); });
         registerBtn.setOnAction(e   -> { setActive(registerBtn);   showRegistration(); });
@@ -99,10 +103,11 @@ public class StudentDashboard {
         gradesBtn.setOnAction(e     -> { setActive(gradesBtn);     showGrades(); });
         timetableBtn.setOnAction(e  -> { setActive(timetableBtn);  showTimetable(); });
         attendanceBtn.setOnAction(e -> { setActive(attendanceBtn); showAttendance(); });
+        evaluateBtn.setOnAction(e   -> { setActive(evaluateBtn);   showEvaluate(); });
 
         setActive(homeBtn);
 
-        VBox navBox = new VBox(4, homeBtn, registerBtn, coursesBtn, gradesBtn, timetableBtn, attendanceBtn);
+        VBox navBox = new VBox(4, homeBtn, registerBtn, coursesBtn, gradesBtn, timetableBtn, attendanceBtn, evaluateBtn);
         navBox.setPadding(new Insets(8, 12, 8, 12));
 
         // spacer
@@ -710,6 +715,179 @@ public class StudentDashboard {
 
         pane.getChildren().addAll(warningLabel, table);
         setContent(pane);
+    }
+
+    // ── Evaluate view ─────────────────────────────────────────────────────────
+
+    private void showEvaluate() {
+        VBox pane = new VBox(16);
+        pane.setPadding(new Insets(30));
+        pane.getChildren().add(sectionTitle("Evaluate Lecturers"));
+
+        Label hint = new Label("Rate your lecturers based on teaching performance. Evaluations are anonymous.");
+        hint.setFont(Font.font("Segoe UI", FontPosture.ITALIC, 12));
+        hint.setTextFill(Color.web("#64748B"));
+        hint.setWrapText(true);
+
+        Label statusLabel = new Label();
+        statusLabel.setFont(Font.font("Segoe UI", 12));
+        statusLabel.setVisible(false);
+        statusLabel.setWrapText(true);
+
+        // ── Course list table ─────────────────────────────────────────────
+        TableView<EvaluationRecord> table = new TableView<>();
+        table.setStyle(tableStyle() + " -fx-font-size: 13px;");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        table.setPrefHeight(200);
+
+        TableColumn<EvaluationRecord, String> codeCol = new TableColumn<>("Code");
+        codeCol.setCellValueFactory(new PropertyValueFactory<>("courseCode"));
+        codeCol.setMaxWidth(80);
+
+        TableColumn<EvaluationRecord, String> nameCol = new TableColumn<>("Course");
+        nameCol.setCellValueFactory(new PropertyValueFactory<>("courseName"));
+
+        TableColumn<EvaluationRecord, String> lecCol = new TableColumn<>("Lecturer");
+        lecCol.setCellValueFactory(new PropertyValueFactory<>("lecturerName"));
+        lecCol.setMaxWidth(160);
+
+        TableColumn<EvaluationRecord, String> ratingCol = new TableColumn<>("Your Rating");
+        ratingCol.setCellValueFactory(new PropertyValueFactory<>("ratingDisplay"));
+        ratingCol.setMaxWidth(200);
+        ratingCol.setCellFactory(tc -> new TableCell<EvaluationRecord, String>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) { setText(null); return; }
+                setText(item);
+                setTextFill("Not yet rated".equals(item) ? Color.web("#64748B") : Color.web("#F59E0B"));
+            }
+        });
+
+        table.getColumns().addAll(codeCol, nameCol, lecCol, ratingCol);
+
+        // ── Evaluation form ───────────────────────────────────────────────
+        VBox formCard = new VBox(12);
+        formCard.setPadding(new Insets(16));
+        formCard.setStyle(
+            "-fx-background-color: #1E293B; -fx-background-radius: 12;" +
+            "-fx-border-color: #334155; -fx-border-radius: 12;"
+        );
+        formCard.setVisible(false);
+        formCard.setManaged(false);
+
+        Label formTitle = new Label();
+        formTitle.setFont(Font.font("Segoe UI", FontWeight.BOLD, 14));
+        formTitle.setTextFill(Color.web("#F1F5F9"));
+
+        Label formLecturer = new Label();
+        formLecturer.setFont(Font.font("Segoe UI", 13));
+        formLecturer.setTextFill(Color.web("#94A3B8"));
+
+        Label ratingPrompt = new Label("Your Rating:");
+        ratingPrompt.setTextFill(Color.web("#94A3B8"));
+        ratingPrompt.setFont(Font.font("Segoe UI", FontWeight.SEMI_BOLD, 13));
+
+        // Star widget
+        Label[] starLabels = new Label[5];
+        int[]   selectedRating = {0};
+
+        HBox starBox = new HBox(6);
+        starBox.setAlignment(Pos.CENTER_LEFT);
+        for (int i = 0; i < 5; i++) {
+            final int val = i + 1;
+            Label star = new Label("☆");
+            star.setFont(Font.font("Segoe UI", 34));
+            star.setTextFill(Color.web("#F59E0B"));
+            star.setStyle("-fx-cursor: hand;");
+            starLabels[i] = star;
+            star.setOnMouseEntered(e  -> updateStarDisplay(starLabels, val));
+            star.setOnMouseClicked(e  -> { selectedRating[0] = val; updateStarDisplay(starLabels, val); });
+            starBox.getChildren().add(star);
+        }
+        starBox.setOnMouseExited(e -> updateStarDisplay(starLabels, selectedRating[0]));
+
+        TextArea commentArea = new TextArea();
+        commentArea.setPromptText("Add a comment (optional)...");
+        commentArea.setPrefRowCount(3);
+        commentArea.setStyle(
+            "-fx-control-inner-background: #0F172A; -fx-text-fill: #F1F5F9;" +
+            "-fx-prompt-text-fill: #475569; -fx-border-color: #334155;" +
+            "-fx-border-radius: 6; -fx-background-radius: 6;"
+        );
+
+        Button submitBtn = new Button("Submit Evaluation");
+        submitBtn.setStyle(
+            "-fx-background-color: #2563EB; -fx-text-fill: white;" +
+            "-fx-background-radius: 8; -fx-cursor: hand; -fx-font-size: 13px; -fx-padding: 6 18;"
+        );
+
+        formCard.getChildren().addAll(formTitle, formLecturer, ratingPrompt, starBox, commentArea, submitBtn);
+
+        // Row selection → populate form
+        table.getSelectionModel().selectedItemProperty().addListener((obs, old, rec) -> {
+            if (rec == null) { formCard.setVisible(false); formCard.setManaged(false); return; }
+            formCard.setVisible(true);
+            formCard.setManaged(true);
+            formTitle.setText("Evaluating: " + rec.getCourseCode() + " — " + rec.getCourseName());
+            formLecturer.setText("Lecturer: " + rec.getLecturerName());
+            selectedRating[0] = rec.getCurrentRating();
+            updateStarDisplay(starLabels, selectedRating[0]);
+            commentArea.setText(rec.getCurrentComment());
+            submitBtn.setText(rec.isSubmitted() ? "Update Evaluation" : "Submit Evaluation");
+            statusLabel.setVisible(false);
+        });
+
+        submitBtn.setOnAction(e -> {
+            EvaluationRecord rec = table.getSelectionModel().getSelectedItem();
+            if (rec == null) return;
+            if (selectedRating[0] == 0) {
+                showRegStatus(statusLabel, "Please select a star rating (1–5).", false);
+                return;
+            }
+            if (rec.getLecturerId() == 0) {
+                showRegStatus(statusLabel, "This course has no assigned lecturer to evaluate.", false);
+                return;
+            }
+            int    rating  = selectedRating[0];
+            String comment = commentArea.getText().trim();
+            new Thread(() -> {
+                try {
+                    evalDao.submitEvaluation(user.getId(), rec.getCourseId(), rec.getLecturerId(), rating, comment);
+                    javafx.application.Platform.runLater(() -> {
+                        rec.setCurrentRating(rating);
+                        rec.setCurrentComment(comment);
+                        table.refresh();
+                        submitBtn.setText("Update Evaluation");
+                        showRegStatus(statusLabel, "Evaluation submitted successfully!", true);
+                    });
+                } catch (Exception ex) {
+                    javafx.application.Platform.runLater(() ->
+                        showRegStatus(statusLabel, "Error: " + ex.getMessage(), false));
+                }
+            }).start();
+        });
+
+        // Load enrolled courses with evaluation status
+        new Thread(() -> {
+            try {
+                List<EvaluationRecord> records = evalDao.getStudentEvaluations(user.getId());
+                javafx.application.Platform.runLater(() ->
+                    table.setItems(FXCollections.observableArrayList(records)));
+            } catch (Exception ex) {
+                javafx.application.Platform.runLater(() -> showDbError(pane, ex));
+            }
+        }).start();
+
+        VBox.setVgrow(table, Priority.SOMETIMES);
+        pane.getChildren().addAll(hint, statusLabel, table, formCard);
+        setContent(pane);
+    }
+
+    private void updateStarDisplay(Label[] labels, int rating) {
+        for (int i = 0; i < labels.length; i++) {
+            labels[i].setText(i < rating ? "★" : "☆");
+        }
     }
 
     private String gpaLetterBand(double avg) {
