@@ -16,11 +16,15 @@ import smartuniversityacademicsystem.model.*;
 import smartuniversityacademicsystem.view.LoginView;
 import smartuniversityacademicsystem.view.TimetableGridView;
 
+import java.util.Arrays;
 import java.util.List;
+import javafx.animation.*;
+import javafx.util.Duration;
 import smartuniversityacademicsystem.db.AttendanceDAO;
 import smartuniversityacademicsystem.db.EvaluationDAO;
 import smartuniversityacademicsystem.model.AttendanceSummary;
 import smartuniversityacademicsystem.model.EvaluationRecord;
+import smartuniversityacademicsystem.util.UIUtils;
 
 public class StudentDashboard {
 
@@ -83,7 +87,9 @@ public class StudentDashboard {
         roleLabel.setFont(Font.font("Segoe UI", 11));
         roleLabel.setTextFill(Color.web("#64748B"));
 
-        VBox userBox = new VBox(3, nameLabel, roleLabel);
+        StackPane avatar = UIUtils.avatarCircle(user.getFullName(), "#2563EB");
+
+        VBox userBox = new VBox(6, avatar, nameLabel, roleLabel);
         userBox.setPadding(new Insets(10, 20, 16, 20));
 
         Separator sep2 = separator();
@@ -137,7 +143,7 @@ public class StudentDashboard {
         VBox logoutBox = new VBox(logoutBtn);
         logoutBox.setPadding(new Insets(8, 12, 16, 12));
 
-        VBox sidebar = new VBox(brandBox, sep1, userBox, sep2, navBox, spacer, sep3, logoutBox);
+        VBox sidebar = new VBox(UIUtils.sidebarAccent("#2563EB"), brandBox, sep1, userBox, sep2, navBox, spacer, sep3, logoutBox);
         sidebar.setPrefWidth(200);
         sidebar.setStyle("-fx-background-color: #1E293B;");
 
@@ -394,6 +400,7 @@ public class StudentDashboard {
             statCard("Academic Status",  avg >= 50 ? "Good Standing" : "At Risk",
                                          avg >= 50 ? "#7C3AED" : "#DC2626")
         );
+        UIUtils.staggerIn(new java.util.ArrayList<javafx.scene.Node>(cards.getChildren()), 110);
 
         // recent grades preview
         Label recentTitle = sectionTitle("Recent Grades");
@@ -528,12 +535,14 @@ public class StudentDashboard {
 
     private void setContent(javafx.scene.Node node) {
         contentArea.getChildren().setAll(node);
+        UIUtils.animateIn(node);
     }
 
     private TableView<Enrolment> buildGradesTable() {
         TableView<Enrolment> table = new TableView<>();
         table.setStyle(tableStyle());
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        table.setRowFactory(UIUtils.<Enrolment>hoverRowFactory());
 
         TableColumn<Enrolment, String> codeCol   = col("Code",   "courseCode",  90);
         TableColumn<Enrolment, String> nameCol   = col("Course", "courseName",   0);
@@ -564,24 +573,7 @@ public class StudentDashboard {
     }
 
     private VBox statCard(String label, String value, String color) {
-        Label valLabel = new Label(value);
-        valLabel.setFont(Font.font("Segoe UI", FontWeight.BOLD, 26));
-        valLabel.setTextFill(Color.web(color));
-
-        Label lbl = new Label(label);
-        lbl.setFont(Font.font("Segoe UI", 12));
-        lbl.setTextFill(Color.web("#94A3B8"));
-
-        VBox card = new VBox(6, valLabel, lbl);
-        card.setPadding(new Insets(20));
-        card.setPrefWidth(200);
-        card.setStyle(
-            "-fx-background-color: #1E293B;" +
-            "-fx-background-radius: 12;" +
-            "-fx-border-color: #334155;" +
-            "-fx-border-radius: 12;"
-        );
-        return card;
+        return UIUtils.statCard(label, value, color, 200);
     }
 
     private Label sectionTitle(String text) {
@@ -636,6 +628,7 @@ public class StudentDashboard {
         TableView<AttendanceSummary> table = new TableView<>();
         table.setStyle(tableStyle() + " -fx-font-size: 13px;");
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        table.setRowFactory(UIUtils.<AttendanceSummary>hoverRowFactory());
         VBox.setVgrow(table, Priority.ALWAYS);
 
         TableColumn<AttendanceSummary, String> codeCol = new TableColumn<>("Code");
@@ -664,15 +657,15 @@ public class StudentDashboard {
             new javafx.beans.property.SimpleDoubleProperty(data.getValue().getPercentage()).asObject());
         barCol.setMinWidth(150);
         barCol.setCellFactory(tc -> new TableCell<AttendanceSummary, Double>() {
-            private final ProgressBar bar = new ProgressBar();
+            private final ProgressBar bar = new ProgressBar(0);
             { bar.setPrefWidth(130); bar.setPrefHeight(16); }
             @Override
             protected void updateItem(Double item, boolean empty) {
                 super.updateItem(item, empty);
                 if (empty || item == null) { setGraphic(null); return; }
                 double p = item / 100.0;
-                bar.setProgress(p);
                 bar.setStyle(p < 0.75 ? "-fx-accent: #EF4444;" : "-fx-accent: #22C55E;");
+                UIUtils.animateProgress(bar, p);
                 setGraphic(bar);
             }
         });
@@ -738,6 +731,7 @@ public class StudentDashboard {
         TableView<EvaluationRecord> table = new TableView<>();
         table.setStyle(tableStyle() + " -fx-font-size: 13px;");
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        table.setRowFactory(UIUtils.<EvaluationRecord>hoverRowFactory());
         table.setPrefHeight(200);
 
         TableColumn<EvaluationRecord, String> codeCol = new TableColumn<>("Code");
@@ -801,8 +795,16 @@ public class StudentDashboard {
             star.setTextFill(Color.web("#F59E0B"));
             star.setStyle("-fx-cursor: hand;");
             starLabels[i] = star;
-            star.setOnMouseEntered(e  -> updateStarDisplay(starLabels, val));
-            star.setOnMouseClicked(e  -> { selectedRating[0] = val; updateStarDisplay(starLabels, val); });
+            star.setOnMouseEntered(e -> {
+                ScaleTransition st = new ScaleTransition(Duration.millis(100), star);
+                st.setToX(1.35); st.setToY(1.35); st.play();
+                updateStarDisplay(starLabels, val);
+            });
+            star.setOnMouseExited(e -> {
+                ScaleTransition st = new ScaleTransition(Duration.millis(100), star);
+                st.setToX(1.0); st.setToY(1.0); st.play();
+            });
+            star.setOnMouseClicked(e -> { selectedRating[0] = val; updateStarDisplay(starLabels, val); });
             starBox.getChildren().add(star);
         }
         starBox.setOnMouseExited(e -> updateStarDisplay(starLabels, selectedRating[0]));
@@ -859,7 +861,8 @@ public class StudentDashboard {
                         rec.setCurrentComment(comment);
                         table.refresh();
                         submitBtn.setText("Update Evaluation");
-                        showRegStatus(statusLabel, "Evaluation submitted successfully!", true);
+                        statusLabel.setVisible(false);
+                        UIUtils.toast(contentArea, "Evaluation submitted successfully!", true);
                     });
                 } catch (Exception ex) {
                     javafx.application.Platform.runLater(() ->

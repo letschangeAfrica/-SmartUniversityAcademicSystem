@@ -21,6 +21,8 @@ import smartuniversityacademicsystem.view.TimetableGridView;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import javafx.animation.*;
+import javafx.util.Duration;
 import javafx.stage.FileChooser;
 import javafx.scene.chart.BarChart;
 import javafx.scene.chart.CategoryAxis;
@@ -32,6 +34,7 @@ import smartuniversityacademicsystem.model.EvaluationFeedback;
 import smartuniversityacademicsystem.model.LecturerRating;
 import smartuniversityacademicsystem.model.AttendanceRecord;
 import smartuniversityacademicsystem.model.SessionRecord;
+import smartuniversityacademicsystem.util.UIUtils;
 
 public class LecturerDashboard {
 
@@ -88,7 +91,9 @@ public class LecturerDashboard {
         roleLabel.setFont(Font.font("Segoe UI", 11));
         roleLabel.setTextFill(Color.web("#64748B"));
 
-        VBox userBox = new VBox(3, nameLabel, roleLabel);
+        StackPane avatar = UIUtils.avatarCircle(user.getFullName(), "#059669");
+
+        VBox userBox = new VBox(6, avatar, nameLabel, roleLabel);
         userBox.setPadding(new Insets(10, 20, 16, 20));
 
         Button homeBtn      = navButton("  Home");
@@ -138,7 +143,7 @@ public class LecturerDashboard {
         logoutBox.setPadding(new Insets(8, 12, 16, 12));
 
         VBox sidebar = new VBox(
-            brandBox, separator(), userBox, separator(),
+            UIUtils.sidebarAccent("#059669"), brandBox, separator(), userBox, separator(),
             navBox, spacer, separator(), logoutBox
         );
         sidebar.setPrefWidth(200);
@@ -161,12 +166,15 @@ public class LecturerDashboard {
                 int    courses  = dao.getCourseCount(user.getId());
                 int    students = dao.getTotalStudents(user.getId());
                 double avg      = dao.getOverallAverage(user.getId());
-                javafx.application.Platform.runLater(() -> cards.getChildren().addAll(
-                    statCard("Courses Teaching",  String.valueOf(courses),  "#2563EB"),
-                    statCard("Total Students",    String.valueOf(students), "#059669"),
-                    statCard("Class Average",
-                        avg > 0 ? String.format("%.1f%%", avg) : "N/A",   "#7C3AED")
-                ));
+                javafx.application.Platform.runLater(() -> {
+                    cards.getChildren().addAll(
+                        statCard("Courses Teaching",  String.valueOf(courses),  "#2563EB"),
+                        statCard("Total Students",    String.valueOf(students), "#059669"),
+                        statCard("Class Average",
+                            avg > 0 ? String.format("%.1f%%", avg) : "N/A",   "#7C3AED")
+                    );
+                    UIUtils.staggerIn(new ArrayList<javafx.scene.Node>(cards.getChildren()), 110);
+                });
             } catch (Exception ignored) {}
         }).start();
 
@@ -212,11 +220,12 @@ public class LecturerDashboard {
         statusLabel.setFont(Font.font("Segoe UI", 12));
         statusLabel.setVisible(false);
 
-        // Grades table (editable)what
+        // Grades table (editable)
         TableView<StudentRecord> table = new TableView<>();
         table.setEditable(true);
         table.setStyle(tableStyle() + " -fx-font-size: 13px;");
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        table.setRowFactory(UIUtils.<StudentRecord>hoverRowFactory());
 
         TableColumn<StudentRecord, String> nameCol = new TableColumn<>("Student Name");
         nameCol.setCellValueFactory(new PropertyValueFactory<>("fullName"));
@@ -311,6 +320,7 @@ public class LecturerDashboard {
         TableView<StudentRecord> table = new TableView<>();
         table.setStyle(tableStyle() + " -fx-font-size: 13px;");
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        table.setRowFactory(UIUtils.<StudentRecord>hoverRowFactory());
 
         TableColumn<StudentRecord, String> nameCol  = new TableColumn<>("Student Name");
         nameCol.setCellValueFactory(new PropertyValueFactory<>("fullName"));
@@ -395,6 +405,7 @@ public class LecturerDashboard {
         TableView<Course> table = new TableView<>();
         table.setStyle(tableStyle() + " -fx-font-size: 13px;");
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        table.setRowFactory(UIUtils.<Course>hoverRowFactory());
 
         TableColumn<Course, String> codeCol = new TableColumn<>("Code");
         codeCol.setCellValueFactory(new PropertyValueFactory<>("code"));
@@ -437,6 +448,7 @@ public class LecturerDashboard {
 
     private void setContent(javafx.scene.Node node) {
         contentArea.getChildren().setAll(node);
+        UIUtils.animateIn(node);
     }
 
     private Button navButton(String text) {
@@ -470,22 +482,7 @@ public class LecturerDashboard {
     }
 
     private VBox statCard(String label, String value, String color) {
-        Label valLabel = new Label(value);
-        valLabel.setFont(Font.font("Segoe UI", FontWeight.BOLD, 26));
-        valLabel.setTextFill(Color.web(color));
-
-        Label lbl = new Label(label);
-        lbl.setFont(Font.font("Segoe UI", 12));
-        lbl.setTextFill(Color.web("#94A3B8"));
-
-        VBox card = new VBox(6, valLabel, lbl);
-        card.setPadding(new Insets(20));
-        card.setPrefWidth(200);
-        card.setStyle(
-            "-fx-background-color: #1E293B; -fx-background-radius: 12;" +
-            "-fx-border-color: #334155; -fx-border-radius: 12;"
-        );
-        return card;
+        return UIUtils.statCard(label, value, color, 200);
     }
 
     private Label sectionTitle(String text) {
@@ -521,6 +518,7 @@ public class LecturerDashboard {
         TableView<EvaluationFeedback> feedbackTable = new TableView<>();
         feedbackTable.setStyle(tableStyle() + " -fx-font-size: 13px;");
         feedbackTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        feedbackTable.setRowFactory(UIUtils.<EvaluationFeedback>hoverRowFactory());
         VBox.setVgrow(feedbackTable, Priority.ALWAYS);
 
         TableColumn<EvaluationFeedback, String> ratCol = new TableColumn<>("Rating");
@@ -613,6 +611,7 @@ public class LecturerDashboard {
         TableView<AttendanceRecord> attTable = new TableView<>();
         attTable.setStyle(tableStyle() + " -fx-font-size: 13px;");
         attTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        attTable.setRowFactory(UIUtils.<AttendanceRecord>hoverRowFactory());
         VBox.setVgrow(attTable, Priority.ALWAYS);
 
         TableColumn<AttendanceRecord, String> nameCol = new TableColumn<>("Student Name");

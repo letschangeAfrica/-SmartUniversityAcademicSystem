@@ -25,8 +25,12 @@ import smartuniversityacademicsystem.scheduling.TimetableGenerator;
 import smartuniversityacademicsystem.view.LoginView;
 import smartuniversityacademicsystem.view.TimetableGridView;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import javafx.animation.*;
+import javafx.util.Duration;
+import smartuniversityacademicsystem.util.UIUtils;
 
 public class AdminDashboard {
 
@@ -83,7 +87,9 @@ public class AdminDashboard {
         roleLabel.setFont(Font.font("Segoe UI", 11));
         roleLabel.setTextFill(Color.web("#64748B"));
 
-        VBox userBox = new VBox(3, nameLabel, roleLabel);
+        StackPane avatar = UIUtils.avatarCircle(user.getFullName(), "#7C3AED");
+
+        VBox userBox = new VBox(6, avatar, nameLabel, roleLabel);
         userBox.setPadding(new Insets(10, 20, 16, 20));
 
         Button homeBtn       = navButton("  Home");
@@ -132,7 +138,7 @@ public class AdminDashboard {
         logoutBox.setPadding(new Insets(8, 12, 16, 12));
 
         VBox sidebar = new VBox(
-            brandBox, separator(), userBox, separator(),
+            UIUtils.sidebarAccent("#7C3AED"), brandBox, separator(), userBox, separator(),
             navBox, spacer, separator(), logoutBox
         );
         sidebar.setPrefWidth(210);
@@ -153,13 +159,16 @@ public class AdminDashboard {
         new Thread(() -> {
             try {
                 int[] s = dao.getSystemStats(); // [students, lecturers, admins, courses, enrolments]
-                javafx.application.Platform.runLater(() -> statsRow.getChildren().addAll(
-                    statCard("Students",    String.valueOf(s[0]), "#2563EB"),
-                    statCard("Lecturers",   String.valueOf(s[1]), "#059669"),
-                    statCard("Admins",      String.valueOf(s[2]), "#7C3AED"),
-                    statCard("Courses",     String.valueOf(s[3]), "#D97706"),
-                    statCard("Enrolments",  String.valueOf(s[4]), "#0891B2")
-                ));
+                javafx.application.Platform.runLater(() -> {
+                    statsRow.getChildren().addAll(
+                        statCard("Students",    String.valueOf(s[0]), "#2563EB"),
+                        statCard("Lecturers",   String.valueOf(s[1]), "#059669"),
+                        statCard("Admins",      String.valueOf(s[2]), "#7C3AED"),
+                        statCard("Courses",     String.valueOf(s[3]), "#D97706"),
+                        statCard("Enrolments",  String.valueOf(s[4]), "#0891B2")
+                    );
+                    UIUtils.staggerIn(new ArrayList<javafx.scene.Node>(statsRow.getChildren()), 90);
+                });
             } catch (Exception ignored) {}
         }).start();
 
@@ -185,6 +194,7 @@ public class AdminDashboard {
         TableView<UserRecord> table = new TableView<>(data);
         table.setStyle(tableStyle() + " -fx-font-size: 13px;");
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        table.setRowFactory(UIUtils.<UserRecord>hoverRowFactory());
 
         TableColumn<UserRecord, String>  unCol     = col("Username",  "username",  130);
         TableColumn<UserRecord, String>  nameCol   = col("Full Name", "fullName",    0);
@@ -280,6 +290,7 @@ public class AdminDashboard {
         TableView<Course> table = new TableView<>(data);
         table.setStyle(tableStyle() + " -fx-font-size: 13px;");
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        table.setRowFactory(UIUtils.<Course>hoverRowFactory());
 
         TableColumn<Course, String> codeCol = col("Code",        "code",         90);
         TableColumn<Course, String> nameCol = col("Course Name", "name",          0);
@@ -610,6 +621,7 @@ public class AdminDashboard {
         TableView<CourseReport> table = new TableView<>();
         table.setStyle(tableStyle() + " -fx-font-size: 13px;");
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        table.setRowFactory(UIUtils.<CourseReport>hoverRowFactory());
 
         TableColumn<CourseReport, String> codeCol  = col("Code",       "code",                80);
         TableColumn<CourseReport, String> nameCol  = col("Course",     "name",                 0);
@@ -637,6 +649,7 @@ public class AdminDashboard {
 
     private void setContent(javafx.scene.Node node) {
         contentArea.getChildren().setAll(node);
+        UIUtils.animateIn(node);
     }
 
     private <S, T> TableColumn<S, T> col(String title, String prop, double maxW) {
@@ -647,22 +660,7 @@ public class AdminDashboard {
     }
 
     private VBox statCard(String label, String value, String color) {
-        Label valLbl = new Label(value);
-        valLbl.setFont(Font.font("Segoe UI", FontWeight.BOLD, 28));
-        valLbl.setTextFill(Color.web(color));
-
-        Label lbl = new Label(label);
-        lbl.setFont(Font.font("Segoe UI", 12));
-        lbl.setTextFill(Color.web("#94A3B8"));
-
-        VBox card = new VBox(6, valLbl, lbl);
-        card.setPadding(new Insets(18));
-        card.setPrefWidth(150);
-        card.setStyle(
-            "-fx-background-color: #1E293B; -fx-background-radius: 12;" +
-            "-fx-border-color: #334155; -fx-border-radius: 12;"
-        );
-        return card;
+        return UIUtils.statCard(label, value, color, 150);
     }
 
     private Button actionButton(String text, String color) {
@@ -794,6 +792,7 @@ public class AdminDashboard {
         TableView<AttendanceSummary> table = new TableView<>();
         table.setStyle(tableStyle() + " -fx-font-size: 13px;");
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        table.setRowFactory(UIUtils.<AttendanceSummary>hoverRowFactory());
         VBox.setVgrow(table, Priority.ALWAYS);
 
         TableColumn<AttendanceSummary, String> studentCol = new TableColumn<>("Student");
@@ -818,15 +817,15 @@ public class AdminDashboard {
             new javafx.beans.property.SimpleDoubleProperty(data.getValue().getPercentage()).asObject());
         barCol.setMinWidth(160);
         barCol.setCellFactory(tc -> new TableCell<AttendanceSummary, Double>() {
-            private final ProgressBar bar = new ProgressBar();
+            private final ProgressBar bar = new ProgressBar(0);
             { bar.setPrefWidth(140); bar.setPrefHeight(16); }
             @Override
             protected void updateItem(Double item, boolean empty) {
                 super.updateItem(item, empty);
                 if (empty || item == null) { setGraphic(null); return; }
                 double p = item / 100.0;
-                bar.setProgress(p);
                 bar.setStyle(p < 0.75 ? "-fx-accent: #EF4444;" : "-fx-accent: #22C55E;");
+                UIUtils.animateProgress(bar, p);
                 setGraphic(bar);
             }
         });
@@ -923,6 +922,7 @@ public class AdminDashboard {
         TableView<LecturerRating> table = new TableView<>();
         table.setStyle(tableStyle() + " -fx-font-size: 13px;");
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        table.setRowFactory(UIUtils.<LecturerRating>hoverRowFactory());
         VBox.setVgrow(table, Priority.ALWAYS);
 
         TableColumn<LecturerRating, String> nameCol = new TableColumn<>("Lecturer");
