@@ -1,0 +1,13 @@
+build/
+dist/
+.claude/
+nbproject/private/
+nbproject/build-impl.xml
+nbproject/genfiles.properties
+.nb-gradle/
+*.class
+*.jar
+!libs/
+*.log
+*.tmp
+*.bak
