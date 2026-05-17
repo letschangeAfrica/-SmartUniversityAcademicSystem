@@ -282,7 +282,7 @@ public class LecturerDashboard {
         }).start();
 
         Label hint = new Label("Double-click a grade cell to edit it, then press Enter to save.");
-        hint.setFont(Font.font("Segoe UI", FontStyle.ITALIC, 12));
+        hint.setFont(Font.font("Segoe UI", FontPosture.ITALIC, 12));
         hint.setTextFill(Color.web("#64748B"));
 
         HBox toolbar = new HBox(12, courseBox);
@@ -524,7 +524,7 @@ public class LecturerDashboard {
         TableColumn<AttendanceRecord, String> statCol = new TableColumn<>("Status — click to toggle");
         statCol.setCellValueFactory(new PropertyValueFactory<>("status"));
         statCol.setMaxWidth(200);
-        statCol.setCellFactory(tc -> new TableCell<>() {
+        statCol.setCellFactory(tc -> new TableCell<AttendanceRecord, String>() {
             private final Button btn = new Button();
             {
                 btn.setPrefWidth(110);

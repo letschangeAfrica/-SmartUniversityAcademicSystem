@@ -1,6 +1,6 @@
 package smartuniversityacademicsystem.scheduling;
 
-import java.sql.SQLException;
+import java.sql.*;
 import java.util.*;
 import java.util.stream.Collectors;
 import smartuniversityacademicsystem.db.TimetableDAO;
@@ -189,10 +189,10 @@ public class TimetableGenerator {
             "FROM timetable t JOIN courses c ON t.course_id = c.id " +
             "WHERE t.semester_id = ? AND t.auto_generated = FALSE";
 
-        try (var ps = smartuniversityacademicsystem.db.DatabaseConnection
+        try (PreparedStatement ps = smartuniversityacademicsystem.db.DatabaseConnection
                 .getConnection().prepareStatement(sql)) {
             ps.setInt(1, semesterId);
-            try (var rs = ps.executeQuery()) {
+            try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     String key    = rs.getString("day_of_week") + "_" + rs.getString("st");
                     int    roomId = rs.getInt("room_id");

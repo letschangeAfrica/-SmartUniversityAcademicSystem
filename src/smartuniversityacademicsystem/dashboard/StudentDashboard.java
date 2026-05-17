@@ -658,7 +658,7 @@ public class StudentDashboard {
         barCol.setCellValueFactory(data ->
             new javafx.beans.property.SimpleDoubleProperty(data.getValue().getPercentage()).asObject());
         barCol.setMinWidth(150);
-        barCol.setCellFactory(tc -> new TableCell<>() {
+        barCol.setCellFactory(tc -> new TableCell<AttendanceSummary, Double>() {
             private final ProgressBar bar = new ProgressBar();
             { bar.setPrefWidth(130); bar.setPrefHeight(16); }
             @Override
@@ -675,7 +675,7 @@ public class StudentDashboard {
         TableColumn<AttendanceSummary, String> warnCol = new TableColumn<>("Status");
         warnCol.setCellValueFactory(new PropertyValueFactory<>("warning"));
         warnCol.setMaxWidth(180);
-        warnCol.setCellFactory(tc -> new TableCell<>() {
+        warnCol.setCellFactory(tc -> new TableCell<AttendanceSummary, String>() {
             @Override
             protected void updateItem(String item, boolean empty) {
                 super.updateItem(item, empty);
