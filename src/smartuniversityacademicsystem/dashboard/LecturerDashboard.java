@@ -348,7 +348,7 @@ public class LecturerDashboard {
                 try {
                     List<TimetableEntry> entries = ttDao.getTimetableForLecturer(user.getId(), sem.getId());
                     javafx.application.Platform.runLater(() ->
-                        gridHolder.getChildren().setAll(new TimetableGridView().build(entries))
+                        gridHolder.getChildren().setAll(new TimetableGridView().buildWithFilter(entries))
                     );
                 } catch (Exception ex) { /* ignore */ }
             }).start();

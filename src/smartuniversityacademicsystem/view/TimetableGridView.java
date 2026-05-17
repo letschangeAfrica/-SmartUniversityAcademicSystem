@@ -1,20 +1,21 @@
 package smartuniversityacademicsystem.view;
 
+import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.control.Label;
-import javafx.scene.control.ScrollPane;
+import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
-import javafx.scene.text.Font;
-import javafx.scene.text.FontWeight;
+import javafx.scene.text.*;
 import smartuniversityacademicsystem.model.TimetableEntry;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
- * Reusable weekly timetable calendar grid.
- * Displays courses as coloured cards in a Mon-Fri / time-slot grid.
+ * Reusable weekly timetable calendar grid with day filter.
+ * Call buildWithFilter(entries) to get a VBox containing the ComboBox + grid.
+ * Call build(entries) to get just the ScrollPane grid (no filter bar).
  */
 public class TimetableGridView {
 
@@ -22,7 +23,6 @@ public class TimetableGridView {
         "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"
     };
 
-    // Displayed time bands (rows)
     private static final String[][] SLOTS = {
         {"08:00", "10:00"},
         {"10:00", "12:00"},
@@ -30,88 +30,123 @@ public class TimetableGridView {
         {"16:00", "18:00"}
     };
 
-    // Card accent colours cycling per unique course code
     private static final String[] CARD_COLORS = {
         "#2563EB", "#059669", "#7C3AED", "#D97706",
         "#0891B2", "#DC2626", "#65A30D", "#DB2777"
     };
 
+    // ── Public API ────────────────────────────────────────────────────────────
+
+    /** Returns a VBox with a day-filter ComboBox on top and the grid below. */
+    public VBox buildWithFilter(List<TimetableEntry> entries) {
+        ComboBox<String> dayFilter = new ComboBox<>();
+        dayFilter.setItems(FXCollections.observableArrayList(
+            "All Days", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"
+        ));
+        dayFilter.setValue("All Days");
+        dayFilter.setStyle(
+            "-fx-background-color: #1E293B; -fx-text-fill: #F1F5F9;" +
+            "-fx-border-color: #475569; -fx-border-radius: 8; -fx-background-radius: 8;"
+        );
+
+        StackPane gridHolder = new StackPane(build(entries));
+        VBox.setVgrow(gridHolder, Priority.ALWAYS);
+
+        dayFilter.setOnAction(e -> {
+            String selected = dayFilter.getValue();
+            List<TimetableEntry> filtered = "All Days".equals(selected)
+                ? entries
+                : entries.stream()
+                    .filter(t -> t.getDayOfWeek().equalsIgnoreCase(selected))
+                    .collect(Collectors.toList());
+            gridHolder.getChildren().setAll(build(filtered, selected));
+        });
+
+        Label filterLabel = new Label("Filter by day:");
+        filterLabel.setTextFill(Color.web("#94A3B8"));
+        filterLabel.setFont(Font.font("Segoe UI", 12));
+
+        HBox filterBar = new HBox(10, filterLabel, dayFilter);
+        filterBar.setAlignment(Pos.CENTER_LEFT);
+
+        VBox wrapper = new VBox(10, filterBar, gridHolder);
+        VBox.setVgrow(gridHolder, Priority.ALWAYS);
+        return wrapper;
+    }
+
+    /** Returns just the ScrollPane grid (used internally and for backwards compat). */
     public ScrollPane build(List<TimetableEntry> entries) {
+        return build(entries, null);
+    }
+
+    // ── Grid builder ──────────────────────────────────────────────────────────
+
+    private ScrollPane build(List<TimetableEntry> entries, String dayFilter) {
+        // When filtering to a single day, only show that day's column
+        String[] visibleDays = (dayFilter == null || "All Days".equals(dayFilter))
+            ? DAYS
+            : new String[]{normalizeDay(dayFilter)};
+
         GridPane grid = new GridPane();
         grid.setHgap(6);
         grid.setVgap(6);
         grid.setPadding(new Insets(16));
         grid.setStyle("-fx-background-color: #0F172A;");
 
-        // Column constraints
-        ColumnConstraints timeCol = new ColumnConstraints(90);
-        grid.getColumnConstraints().add(timeCol);
-        for (int d = 0; d < DAYS.length; d++) {
-            ColumnConstraints cc = new ColumnConstraints();
-            cc.setHgrow(Priority.ALWAYS);
-            cc.setMinWidth(130);
-            grid.getColumnConstraints().add(cc);
+        // Column constraints: time label + one per visible day
+        grid.getColumnConstraints().add(colConstraint(90, false));
+        for (int i = 0; i < visibleDays.length; i++) {
+            grid.getColumnConstraints().add(colConstraint(150, true));
         }
 
         // Row constraints
-        grid.getRowConstraints().add(rowConstraint(40)); // header
+        grid.getRowConstraints().add(rowConstraint(38));
         for (int s = 0; s < SLOTS.length; s++) {
             grid.getRowConstraints().add(rowConstraint(90));
         }
 
-        // ── Header row ────────────────────────────────────────────────────────
+        // Header row
         grid.add(headerCell(""), 0, 0);
-        for (int d = 0; d < DAYS.length; d++) {
-            grid.add(headerCell(DAYS[d]), d + 1, 0);
+        for (int d = 0; d < visibleDays.length; d++) {
+            grid.add(headerCell(visibleDays[d]), d + 1, 0);
         }
 
-        // ── Time slot labels ──────────────────────────────────────────────────
+        // Time labels + empty cells
         for (int s = 0; s < SLOTS.length; s++) {
-            Label timeLabel = new Label(SLOTS[s][0] + "\n" + SLOTS[s][1]);
-            timeLabel.setFont(Font.font("Segoe UI", FontWeight.SEMI_BOLD, 11));
-            timeLabel.setTextFill(Color.web("#94A3B8"));
-            timeLabel.setAlignment(Pos.CENTER);
-            timeLabel.setMaxWidth(Double.MAX_VALUE);
-            timeLabel.setMaxHeight(Double.MAX_VALUE);
-            timeLabel.setStyle(
-                "-fx-background-color: #1E293B; -fx-background-radius: 8;" +
-                "-fx-border-color: #334155; -fx-border-radius: 8;"
-            );
-            timeLabel.setPadding(new Insets(6));
-            grid.add(timeLabel, 0, s + 1);
-
-            // Empty cells for all days in this slot
-            for (int d = 0; d < DAYS.length; d++) {
+            grid.add(timeLabel(SLOTS[s][0] + "\n" + SLOTS[s][1]), 0, s + 1);
+            for (int d = 0; d < visibleDays.length; d++) {
                 grid.add(emptyCell(), d + 1, s + 1);
             }
         }
 
-        // ── Place timetable entries as cards ──────────────────────────────────
-        // Track unique course codes for consistent colour assignment
-        java.util.Map<String, Integer> colorIndex = new java.util.LinkedHashMap<>();
+        // Place course cards
+        java.util.Map<String, Integer> colorMap = new java.util.LinkedHashMap<>();
         int nextColor = 0;
-
         for (TimetableEntry entry : entries) {
-            int col = dayToCol(entry.getDayOfWeek());
+            int col = dayToCol(entry.getDayOfWeek(), visibleDays);
             int row = timeToRow(entry.getStartTime());
             if (col < 0 || row < 0) continue;
 
-            if (!colorIndex.containsKey(entry.getCourseCode())) {
-                colorIndex.put(entry.getCourseCode(), nextColor % CARD_COLORS.length);
-                nextColor++;
+            if (!colorMap.containsKey(entry.getCourseCode())) {
+                colorMap.put(entry.getCourseCode(), nextColor++ % CARD_COLORS.length);
             }
-            String color = CARD_COLORS[colorIndex.get(entry.getCourseCode())];
 
-            // Remove the empty placeholder and insert the course card
+            // Replace empty placeholder at this cell
             grid.getChildren().removeIf(node ->
                 GridPane.getColumnIndex(node) != null &&
                 GridPane.getRowIndex(node) != null &&
                 GridPane.getColumnIndex(node) == col &&
                 GridPane.getRowIndex(node) == row &&
-                !(node instanceof Label && ((Label)node).getText().contains(":"))
+                node instanceof StackPane
             );
+            grid.add(courseCard(entry, CARD_COLORS[colorMap.get(entry.getCourseCode())]), col, row);
+        }
 
-            grid.add(courseCard(entry, color), col, row);
+        if (entries.isEmpty()) {
+            Label empty = new Label("No timetable entries for this selection.");
+            empty.setTextFill(Color.web("#64748B"));
+            empty.setFont(Font.font("Segoe UI", 13));
+            grid.add(empty, 1, 2);
         }
 
         ScrollPane scroll = new ScrollPane(grid);
@@ -128,7 +163,7 @@ public class TimetableGridView {
         lbl.setTextFill(Color.web("#94A3B8"));
         lbl.setAlignment(Pos.CENTER);
         lbl.setMaxWidth(Double.MAX_VALUE);
-        lbl.setPadding(new Insets(4, 8, 4, 8));
+        lbl.setPadding(new Insets(6));
         lbl.setStyle(
             "-fx-background-color: #1E293B; -fx-background-radius: 6;" +
             "-fx-border-color: #334155; -fx-border-radius: 6;"
@@ -136,60 +171,74 @@ public class TimetableGridView {
         return lbl;
     }
 
+    private Label timeLabel(String text) {
+        Label lbl = new Label(text);
+        lbl.setFont(Font.font("Segoe UI", FontWeight.SEMI_BOLD, 11));
+        lbl.setTextFill(Color.web("#94A3B8"));
+        lbl.setAlignment(Pos.CENTER);
+        lbl.setMaxWidth(Double.MAX_VALUE);
+        lbl.setMaxHeight(Double.MAX_VALUE);
+        lbl.setPadding(new Insets(6));
+        lbl.setStyle(
+            "-fx-background-color: #1E293B; -fx-background-radius: 8;" +
+            "-fx-border-color: #334155; -fx-border-radius: 8;"
+        );
+        return lbl;
+    }
+
     private StackPane emptyCell() {
-        StackPane pane = new StackPane();
-        pane.setMaxWidth(Double.MAX_VALUE);
-        pane.setMaxHeight(Double.MAX_VALUE);
-        pane.setStyle(
+        StackPane p = new StackPane();
+        p.setMaxWidth(Double.MAX_VALUE);
+        p.setMaxHeight(Double.MAX_VALUE);
+        p.setStyle(
             "-fx-background-color: #1E293B; -fx-background-radius: 8;" +
             "-fx-border-color: #1E3A5F; -fx-border-radius: 8;"
         );
-        return pane;
+        return p;
     }
 
     private VBox courseCard(TimetableEntry entry, String color) {
-        Label codeLabel = new Label(entry.getCourseCode());
-        codeLabel.setFont(Font.font("Segoe UI", FontWeight.BOLD, 13));
-        codeLabel.setTextFill(Color.WHITE);
+        Label code  = new Label(entry.getCourseCode());
+        code.setFont(Font.font("Segoe UI", FontWeight.BOLD, 13));
+        code.setTextFill(Color.WHITE);
 
-        Label nameLabel = new Label(entry.getCourseName());
-        nameLabel.setFont(Font.font("Segoe UI", 11));
-        nameLabel.setTextFill(Color.web("#CBD5E1"));
-        nameLabel.setWrapText(true);
+        Label name  = new Label(entry.getCourseName());
+        name.setFont(Font.font("Segoe UI", 11));
+        name.setTextFill(Color.web("#CBD5E1"));
+        name.setWrapText(true);
 
-        Label venueLabel = new Label(entry.getVenue());
-        venueLabel.setFont(Font.font("Segoe UI", 10));
-        venueLabel.setTextFill(Color.web("#94A3B8"));
+        Label venue = new Label(entry.getVenue());
+        venue.setFont(Font.font("Segoe UI", 10));
+        venue.setTextFill(Color.web("#94A3B8"));
 
-        VBox card = new VBox(3, codeLabel, nameLabel, venueLabel);
+        VBox card = new VBox(3, code, name, venue);
         card.setPadding(new Insets(8));
         card.setMaxWidth(Double.MAX_VALUE);
         card.setMaxHeight(Double.MAX_VALUE);
         card.setStyle(
-            "-fx-background-color: " + color + "22; " +   // 22 = ~13% opacity
+            "-fx-background-color: " + color + "22;" +
             "-fx-background-radius: 8;" +
             "-fx-border-color: " + color + ";" +
-            "-fx-border-radius: 8;" +
-            "-fx-border-width: 1.5;"
+            "-fx-border-radius: 8; -fx-border-width: 1.5;"
         );
 
-        // left accent bar
         Region accent = new Region();
         accent.setPrefWidth(4);
         accent.setMaxHeight(Double.MAX_VALUE);
         accent.setStyle("-fx-background-color: " + color + "; -fx-background-radius: 4 0 0 4;");
 
         HBox wrapper = new HBox(accent, card);
+        HBox.setHgrow(card, Priority.ALWAYS);
         wrapper.setMaxWidth(Double.MAX_VALUE);
         wrapper.setMaxHeight(Double.MAX_VALUE);
-        return new VBox(wrapper); // wrap in VBox so GridPane respects sizing
+        return new VBox(wrapper);
     }
 
     // ── Mapping helpers ───────────────────────────────────────────────────────
 
-    private int dayToCol(String day) {
-        for (int i = 0; i < DAYS.length; i++) {
-            if (DAYS[i].equalsIgnoreCase(day)) return i + 1;
+    private int dayToCol(String day, String[] visibleDays) {
+        for (int i = 0; i < visibleDays.length; i++) {
+            if (visibleDays[i].equalsIgnoreCase(day)) return i + 1;
         }
         return -1;
     }
@@ -199,6 +248,18 @@ public class TimetableGridView {
             if (SLOTS[i][0].equals(startTime)) return i + 1;
         }
         return -1;
+    }
+
+    private String normalizeDay(String day) {
+        if (day == null) return "";
+        return day.substring(0, 1).toUpperCase() + day.substring(1).toLowerCase();
+    }
+
+    private ColumnConstraints colConstraint(double min, boolean grow) {
+        ColumnConstraints cc = new ColumnConstraints();
+        cc.setMinWidth(min);
+        if (grow) cc.setHgrow(Priority.ALWAYS);
+        return cc;
     }
 
     private RowConstraints rowConstraint(double height) {

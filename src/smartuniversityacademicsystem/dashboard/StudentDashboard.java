@@ -9,6 +9,7 @@ import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.text.*;
 import javafx.stage.Stage;
+import smartuniversityacademicsystem.db.CourseRegistrationDAO;
 import smartuniversityacademicsystem.db.StudentDAO;
 import smartuniversityacademicsystem.db.TimetableDAO;
 import smartuniversityacademicsystem.model.*;
@@ -21,8 +22,9 @@ public class StudentDashboard {
 
     private final Stage        stage;
     private final User         user;
-    private final StudentDAO   dao    = new StudentDAO();
-    private final TimetableDAO ttDao  = new TimetableDAO();
+    private final StudentDAO             dao    = new StudentDAO();
+    private final TimetableDAO           ttDao  = new TimetableDAO();
+    private final CourseRegistrationDAO  regDao = new CourseRegistrationDAO();
     private final StackPane  contentArea = new StackPane();
 
     // sidebar button references for active state
@@ -81,19 +83,21 @@ public class StudentDashboard {
         Separator sep2 = separator();
 
         // nav buttons
-        Button homeBtn      = navButton("  Home",       "home");
-        Button coursesBtn   = navButton("  My Courses", "courses");
-        Button gradesBtn    = navButton("  My Grades",  "grades");
-        Button timetableBtn = navButton("  Timetable",  "timetable");
+        Button homeBtn      = navButton("  Home",          "home");
+        Button registerBtn  = navButton("  Registration",  "register");
+        Button coursesBtn   = navButton("  My Courses",    "courses");
+        Button gradesBtn    = navButton("  My Grades",     "grades");
+        Button timetableBtn = navButton("  Timetable",     "timetable");
 
         homeBtn.setOnAction(e      -> { setActive(homeBtn);      showHome(); });
+        registerBtn.setOnAction(e  -> { setActive(registerBtn);  showRegistration(); });
         coursesBtn.setOnAction(e   -> { setActive(coursesBtn);   showCourses(); });
         gradesBtn.setOnAction(e    -> { setActive(gradesBtn);    showGrades(); });
         timetableBtn.setOnAction(e -> { setActive(timetableBtn); showTimetable(); });
 
         setActive(homeBtn);
 
-        VBox navBox = new VBox(4, homeBtn, coursesBtn, gradesBtn, timetableBtn);
+        VBox navBox = new VBox(4, homeBtn, registerBtn, coursesBtn, gradesBtn, timetableBtn);
         navBox.setPadding(new Insets(8, 12, 8, 12));
 
         // spacer
@@ -168,6 +172,197 @@ public class StudentDashboard {
     }
 
     // ── Views ─────────────────────────────────────────────────────────────────
+
+    private void showRegistration() {
+        VBox pane = new VBox(16);
+        pane.setPadding(new Insets(30));
+        pane.getChildren().add(sectionTitle("Course Registration"));
+
+        // ── Credit summary label ──────────────────────────────────────────────
+        Label creditLabel = new Label("Loading credits...");
+        creditLabel.setFont(Font.font("Segoe UI", FontWeight.BOLD, 13));
+        creditLabel.setTextFill(Color.web("#38BDF8"));
+
+        // ── Available courses table ───────────────────────────────────────────
+        Label availTitle = new Label("Available Courses");
+        availTitle.setFont(Font.font("Segoe UI", FontWeight.SEMI_BOLD, 14));
+        availTitle.setTextFill(Color.web("#94A3B8"));
+
+        TableView<AvailableCourse> availTable = new TableView<>();
+        availTable.setStyle(tableStyle() + " -fx-font-size: 13px;");
+        availTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        availTable.setPrefHeight(220);
+
+        TableColumn<AvailableCourse, String> acCode  = new TableColumn<>("Code");
+        acCode.setCellValueFactory(new PropertyValueFactory<>("code"));
+        acCode.setMaxWidth(80);
+
+        TableColumn<AvailableCourse, String> acName  = new TableColumn<>("Course Name");
+        acName.setCellValueFactory(new PropertyValueFactory<>("name"));
+
+        TableColumn<AvailableCourse, String> acLec   = new TableColumn<>("Lecturer");
+        acLec.setCellValueFactory(new PropertyValueFactory<>("lecturerName"));
+        acLec.setMaxWidth(150);
+
+        TableColumn<AvailableCourse, String> acCred  = new TableColumn<>("Credits");
+        acCred.setCellValueFactory(new PropertyValueFactory<>("credits"));
+        acCred.setMaxWidth(70);
+
+        TableColumn<AvailableCourse, String> acCap   = new TableColumn<>("Capacity");
+        acCap.setCellValueFactory(new PropertyValueFactory<>("capacityDisplay"));
+        acCap.setMaxWidth(90);
+
+        TableColumn<AvailableCourse, String> acStat  = new TableColumn<>("Status");
+        acStat.setCellValueFactory(new PropertyValueFactory<>("statusDisplay"));
+        acStat.setMaxWidth(100);
+        acStat.setCellFactory(tc -> new TableCell<AvailableCourse, String>() {
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) { setText(null); return; }
+                setText(item);
+                setTextFill(item.equals("Full") ? Color.web("#FCA5A5") : Color.web("#4ADE80"));
+            }
+        });
+
+        availTable.getColumns().addAll(acCode, acName, acLec, acCred, acCap, acStat);
+
+        // ── Enrolled courses table ────────────────────────────────────────────
+        Label enrolledTitle = new Label("My Enrolled Courses");
+        enrolledTitle.setFont(Font.font("Segoe UI", FontWeight.SEMI_BOLD, 14));
+        enrolledTitle.setTextFill(Color.web("#94A3B8"));
+
+        TableView<Enrolment> enrolledTable = new TableView<>();
+        enrolledTable.setStyle(tableStyle() + " -fx-font-size: 13px;");
+        enrolledTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        enrolledTable.setPrefHeight(180);
+
+        TableColumn<Enrolment, String> ecCode  = new TableColumn<>("Code");
+        ecCode.setCellValueFactory(new PropertyValueFactory<>("courseCode"));
+        ecCode.setMaxWidth(80);
+
+        TableColumn<Enrolment, String> ecName  = new TableColumn<>("Course (Credits)");
+        ecName.setCellValueFactory(new PropertyValueFactory<>("courseName"));
+
+        TableColumn<Enrolment, String> ecGrade = new TableColumn<>("Grade");
+        ecGrade.setCellValueFactory(new PropertyValueFactory<>("gradeDisplay"));
+        ecGrade.setMaxWidth(100);
+
+        enrolledTable.getColumns().addAll(ecCode, ecName, ecGrade);
+
+        // ── Status label ──────────────────────────────────────────────────────
+        Label statusLabel = new Label();
+        statusLabel.setFont(Font.font("Segoe UI", 12));
+        statusLabel.setWrapText(true);
+        statusLabel.setVisible(false);
+
+        // ── Buttons ───────────────────────────────────────────────────────────
+        Button registerBtn = new Button("Register Selected");
+        registerBtn.setStyle(
+            "-fx-background-color: #2563EB; -fx-text-fill: white;" +
+            "-fx-background-radius: 8; -fx-cursor: hand; -fx-font-size: 13px; -fx-padding: 6 16;"
+        );
+
+        Button dropBtn = new Button("Drop Selected");
+        dropBtn.setStyle(
+            "-fx-background-color: #DC2626; -fx-text-fill: white;" +
+            "-fx-background-radius: 8; -fx-cursor: hand; -fx-font-size: 13px; -fx-padding: 6 16;"
+        );
+
+        HBox btnBar = new HBox(10, registerBtn, dropBtn);
+        btnBar.setAlignment(Pos.CENTER_LEFT);
+
+        // ── Data loader helper ────────────────────────────────────────────────
+        Runnable refreshAll = () -> new Thread(() -> {
+            try {
+                List<AvailableCourse> avail    = regDao.getAvailableCourses(user.getId());
+                List<Enrolment>       enrolled = regDao.getEnrolledCoursesWithCredits(user.getId());
+                int                   credits  = regDao.getTotalCredits(user.getId());
+                javafx.application.Platform.runLater(() -> {
+                    availTable.setItems(FXCollections.observableArrayList(avail));
+                    enrolledTable.setItems(FXCollections.observableArrayList(enrolled));
+                    creditLabel.setText("Enrolled Credits: " + credits + " / 21");
+                    statusLabel.setVisible(false);
+                });
+            } catch (Exception ex) {
+                javafx.application.Platform.runLater(() ->
+                    showDbError(pane, ex)
+                );
+            }
+        }).start();
+
+        refreshAll.run();
+
+        // ── Register action ───────────────────────────────────────────────────
+        registerBtn.setOnAction(e -> {
+            AvailableCourse selected = availTable.getSelectionModel().getSelectedItem();
+            if (selected == null) {
+                showRegStatus(statusLabel, "Select a course from the Available list first.", false);
+                return;
+            }
+            new Thread(() -> {
+                try {
+                    String error = regDao.checkRegistration(user.getId(), selected.getId());
+                    javafx.application.Platform.runLater(() -> {
+                        if (error != null) {
+                            showRegStatus(statusLabel, error, false);
+                        } else {
+                            try {
+                                regDao.registerCourse(user.getId(), selected.getId());
+                                showRegStatus(statusLabel,
+                                    "Successfully registered for " + selected.getCode() + ".", true);
+                                refreshAll.run();
+                            } catch (Exception ex) {
+                                showRegStatus(statusLabel, "Error: " + ex.getMessage(), false);
+                            }
+                        }
+                    });
+                } catch (Exception ex) {
+                    javafx.application.Platform.runLater(() ->
+                        showRegStatus(statusLabel, "Error: " + ex.getMessage(), false)
+                    );
+                }
+            }).start();
+        });
+
+        // ── Drop action ───────────────────────────────────────────────────────
+        dropBtn.setOnAction(e -> {
+            Enrolment selected = enrolledTable.getSelectionModel().getSelectedItem();
+            if (selected == null) {
+                showRegStatus(statusLabel, "Select a course from My Enrolled list to drop.", false);
+                return;
+            }
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                "Drop " + selected.getCourseCode() + "? Your grade will be lost.",
+                ButtonType.YES, ButtonType.NO);
+            confirm.setHeaderText("Confirm Drop");
+            confirm.showAndWait().ifPresent(btn -> {
+                if (btn == ButtonType.YES) {
+                    new Thread(() -> {
+                        try {
+                            regDao.dropCourse(user.getId(), selected.getCourseCode());
+                            javafx.application.Platform.runLater(() -> {
+                                showRegStatus(statusLabel,
+                                    selected.getCourseCode() + " dropped successfully.", true);
+                                refreshAll.run();
+                            });
+                        } catch (Exception ex) {
+                            javafx.application.Platform.runLater(() ->
+                                showRegStatus(statusLabel, "Error: " + ex.getMessage(), false)
+                            );
+                        }
+                    }).start();
+                }
+            });
+        });
+
+        pane.getChildren().addAll(
+            creditLabel,
+            availTitle, availTable,
+            enrolledTitle, enrolledTable,
+            btnBar, statusLabel
+        );
+        setContent(pane);
+    }
 
     private void showHome() {
         VBox pane = new VBox(20);
@@ -292,7 +487,7 @@ public class StudentDashboard {
                 try {
                     List<TimetableEntry> entries = ttDao.getTimetableForStudent(user.getId(), sem.getId());
                     javafx.application.Platform.runLater(() ->
-                        gridHolder.getChildren().setAll(new TimetableGridView().build(entries))
+                        gridHolder.getChildren().setAll(new TimetableGridView().buildWithFilter(entries))
                     );
                 } catch (Exception ex) {
                     javafx.application.Platform.runLater(() -> showDbError(pane, ex));
@@ -399,6 +594,12 @@ public class StudentDashboard {
 
     private void styleTableColumns(TableView<?> table) {
         table.setStyle(tableStyle() + " -fx-font-size: 13px;");
+    }
+
+    private void showRegStatus(Label label, String msg, boolean success) {
+        label.setText(msg);
+        label.setTextFill(Color.web(success ? "#4ADE80" : "#FCA5A5"));
+        label.setVisible(true);
     }
 
     private void showDbError(VBox pane, Exception ex) {

@@ -53,5 +53,5 @@ SELECT id, 'Wednesday', '14:00', '16:00', 'Lab A102'  FROM courses WHERE code = 
 UNION ALL
 SELECT id, 'Friday',    '10:00', '12:00', 'Lab A102'  FROM courses WHERE code = 'DS401';
 
-
-
+SELECT 
+username, password, role from users;

@@ -402,7 +402,7 @@ public class AdminDashboard {
                             result.conflicts.forEach(c -> msg.append("\n  • ").append(c));
                         }
                         showStatus(statusLabel, msg.toString(), result.conflicts.isEmpty());
-                        gridHolder.getChildren().setAll(new TimetableGridView().build(entries));
+                        gridHolder.getChildren().setAll(new TimetableGridView().buildWithFilter(entries));
                     });
                 } catch (Exception ex) {
                     javafx.application.Platform.runLater(() -> {
@@ -422,7 +422,7 @@ public class AdminDashboard {
                 try {
                     List<TimetableEntry> entries = ttDao.getTimetableBySemester(sem.getId());
                     javafx.application.Platform.runLater(() ->
-                        gridHolder.getChildren().setAll(new TimetableGridView().build(entries))
+                        gridHolder.getChildren().setAll(new TimetableGridView().buildWithFilter(entries))
                     );
                 } catch (Exception ex) {
                     javafx.application.Platform.runLater(() ->
