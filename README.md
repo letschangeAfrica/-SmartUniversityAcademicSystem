@@ -212,7 +212,41 @@ src/smartuniversityacademicsystem/
 
 ## Screenshots
 
-> Run the application and log in with the credentials above to explore each portal.
+### Login
+![Login](images/login.PNG)
+
+---
+
+### Admin Portal
+
+**Home — System Overview**
+![Admin Home](images/Admin%20Home.PNG)
+
+**Evaluations — Lecturer Rankings**
+![Admin Evaluations](images/Admin%20Evaluations.PNG)
+
+---
+
+### Lecturer Portal
+
+**Attendance — Mark Sessions**
+![Lecturer Attendance](images/Lecturer%20Attendance.PNG)
+
+**My Evaluations — Rating Stats & Chart**
+![Lecturer My Evaluations](images/Lecturer%20My%20Evaluations.PNG)
+
+---
+
+### Student Portal
+
+**Home — Overview Cards**
+![Student Home](images/Student%20Home.PNG)
+
+**My Attendance — Progress Bars & Warnings**
+![Student Attendance](images/Student%20Attendance.PNG)
+
+**Evaluate — Star Rating Widget**
+![Student Evaluate](images/Student%20Evaluate.PNG)
 
 ---
 
