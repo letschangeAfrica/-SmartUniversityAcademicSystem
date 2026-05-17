@@ -11,8 +11,11 @@ import javafx.scene.paint.Color;
 import javafx.scene.text.*;
 import javafx.stage.Stage;
 import smartuniversityacademicsystem.db.AdminDAO;
+import smartuniversityacademicsystem.db.TimetableDAO;
 import smartuniversityacademicsystem.model.*;
+import smartuniversityacademicsystem.scheduling.TimetableGenerator;
 import smartuniversityacademicsystem.view.LoginView;
+import smartuniversityacademicsystem.view.TimetableGridView;
 
 import java.util.List;
 import java.util.Optional;
@@ -21,7 +24,8 @@ public class AdminDashboard {
 
     private final Stage    stage;
     private final User     user;
-    private final AdminDAO dao = new AdminDAO();
+    private final AdminDAO     dao   = new AdminDAO();
+    private final TimetableDAO ttDao = new TimetableDAO();
     private final StackPane contentArea = new StackPane();
     private Button activeBtn;
 
@@ -72,19 +76,21 @@ public class AdminDashboard {
         VBox userBox = new VBox(3, nameLabel, roleLabel);
         userBox.setPadding(new Insets(10, 20, 16, 20));
 
-        Button homeBtn    = navButton("  Home");
-        Button usersBtn   = navButton("  User Management");
-        Button coursesBtn = navButton("  Course Management");
-        Button reportsBtn = navButton("  Reports");
+        Button homeBtn      = navButton("  Home");
+        Button usersBtn     = navButton("  User Management");
+        Button coursesBtn   = navButton("  Course Management");
+        Button timetableBtn = navButton("  Timetable");
+        Button reportsBtn   = navButton("  Reports");
 
-        homeBtn.setOnAction(e    -> { setActive(homeBtn);    showHome(); });
-        usersBtn.setOnAction(e   -> { setActive(usersBtn);   showUsers(); });
-        coursesBtn.setOnAction(e -> { setActive(coursesBtn); showCourses(); });
-        reportsBtn.setOnAction(e -> { setActive(reportsBtn); showReports(); });
+        homeBtn.setOnAction(e      -> { setActive(homeBtn);      showHome(); });
+        usersBtn.setOnAction(e     -> { setActive(usersBtn);     showUsers(); });
+        coursesBtn.setOnAction(e   -> { setActive(coursesBtn);   showCourses(); });
+        timetableBtn.setOnAction(e -> { setActive(timetableBtn); showTimetableManager(); });
+        reportsBtn.setOnAction(e   -> { setActive(reportsBtn);   showReports(); });
 
         setActive(homeBtn);
 
-        VBox navBox = new VBox(4, homeBtn, usersBtn, coursesBtn, reportsBtn);
+        VBox navBox = new VBox(4, homeBtn, usersBtn, coursesBtn, timetableBtn, reportsBtn);
         navBox.setPadding(new Insets(8, 12, 8, 12));
 
         Region spacer = new Region();
@@ -328,6 +334,116 @@ public class AdminDashboard {
         refreshCourses(data);
         VBox.setVgrow(table, Priority.ALWAYS);
         pane.getChildren().addAll(toolbar, statusLabel, table);
+        setContent(pane);
+    }
+
+    // ── Timetable Manager ─────────────────────────────────────────────────────
+
+    private void showTimetableManager() {
+        VBox pane = new VBox(16);
+        pane.setPadding(new Insets(30));
+        pane.getChildren().add(sectionTitle("Timetable Management"));
+
+        // Semester selector + generate button
+        ComboBox<Semester> semBox = new ComboBox<>();
+        semBox.setPromptText("Select semester...");
+        semBox.setStyle(
+            "-fx-background-color: #1E293B; -fx-text-fill: #F1F5F9;" +
+            "-fx-border-color: #475569; -fx-border-radius: 8; -fx-background-radius: 8;"
+        );
+
+        Button generateBtn = actionButton("Auto-Generate Timetable", "#2563EB");
+        Button viewBtn     = actionButton("View Timetable",           "#059669");
+
+        Label statusLabel = new Label();
+        statusLabel.setFont(Font.font("Segoe UI", 12));
+        statusLabel.setWrapText(true);
+        statusLabel.setMaxWidth(700);
+        statusLabel.setVisible(false);
+
+        StackPane gridHolder = new StackPane();
+        VBox.setVgrow(gridHolder, Priority.ALWAYS);
+
+        // Load semesters
+        new Thread(() -> {
+            try {
+                List<Semester> semesters = ttDao.getSemesters();
+                Semester active = ttDao.getActiveSemester();
+                javafx.application.Platform.runLater(() -> {
+                    semBox.getItems().setAll(semesters);
+                    if (active != null) semBox.setValue(active);
+                });
+            } catch (Exception ignored) {}
+        }).start();
+
+        generateBtn.setOnAction(e -> {
+            Semester sem = semBox.getValue();
+            if (sem == null) { showStatus(statusLabel, "Select a semester first.", false); return; }
+
+            generateBtn.setDisable(true);
+            generateBtn.setText("Generating...");
+            gridHolder.getChildren().clear();
+
+            new Thread(() -> {
+                try {
+                    TimetableGenerator gen = new TimetableGenerator(ttDao);
+                    TimetableGenerator.GenerationResult result = gen.generate(sem.getId());
+
+                    List<TimetableEntry> entries = ttDao.getTimetableBySemester(sem.getId());
+
+                    javafx.application.Platform.runLater(() -> {
+                        generateBtn.setDisable(false);
+                        generateBtn.setText("Auto-Generate Timetable");
+
+                        StringBuilder msg = new StringBuilder();
+                        msg.append(result.scheduled).append(" courses scheduled successfully.");
+                        if (!result.conflicts.isEmpty()) {
+                            msg.append("\n\nConflicts (").append(result.conflicts.size()).append("):");
+                            result.conflicts.forEach(c -> msg.append("\n  • ").append(c));
+                        }
+                        showStatus(statusLabel, msg.toString(), result.conflicts.isEmpty());
+                        gridHolder.getChildren().setAll(new TimetableGridView().build(entries));
+                    });
+                } catch (Exception ex) {
+                    javafx.application.Platform.runLater(() -> {
+                        generateBtn.setDisable(false);
+                        generateBtn.setText("Auto-Generate Timetable");
+                        showStatus(statusLabel, "Error: " + ex.getMessage(), false);
+                    });
+                }
+            }).start();
+        });
+
+        viewBtn.setOnAction(e -> {
+            Semester sem = semBox.getValue();
+            if (sem == null) { showStatus(statusLabel, "Select a semester first.", false); return; }
+            gridHolder.getChildren().clear();
+            new Thread(() -> {
+                try {
+                    List<TimetableEntry> entries = ttDao.getTimetableBySemester(sem.getId());
+                    javafx.application.Platform.runLater(() ->
+                        gridHolder.getChildren().setAll(new TimetableGridView().build(entries))
+                    );
+                } catch (Exception ex) {
+                    javafx.application.Platform.runLater(() ->
+                        showStatus(statusLabel, "Error: " + ex.getMessage(), false)
+                    );
+                }
+            }).start();
+        });
+
+        Label hint = new Label(
+            "Auto-Generate replaces previously generated slots (manual entries are preserved). " +
+            "Courses are sorted by enrolment size — largest classes get priority slots."
+        );
+        hint.setFont(Font.font("Segoe UI", javafx.scene.text.FontPosture.ITALIC, 12));
+        hint.setTextFill(Color.web("#64748B"));
+        hint.setWrapText(true);
+
+        HBox toolbar = new HBox(10, semBox, generateBtn, viewBtn);
+        toolbar.setAlignment(Pos.CENTER_LEFT);
+
+        pane.getChildren().addAll(toolbar, hint, statusLabel, gridHolder);
         setContent(pane);
     }
 

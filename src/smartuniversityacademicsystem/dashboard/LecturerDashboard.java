@@ -13,8 +13,10 @@ import javafx.scene.text.*;
 import javafx.stage.Stage;
 import javafx.util.converter.DoubleStringConverter;
 import smartuniversityacademicsystem.db.LecturerDAO;
+import smartuniversityacademicsystem.db.TimetableDAO;
 import smartuniversityacademicsystem.model.*;
 import smartuniversityacademicsystem.view.LoginView;
+import smartuniversityacademicsystem.view.TimetableGridView;
 
 import java.util.List;
 
@@ -22,7 +24,8 @@ public class LecturerDashboard {
 
     private final Stage       stage;
     private final User        user;
-    private final LecturerDAO dao = new LecturerDAO();
+    private final LecturerDAO  dao   = new LecturerDAO();
+    private final TimetableDAO ttDao = new TimetableDAO();
     private final StackPane   contentArea = new StackPane();
     private Button            activeBtn;
 
@@ -73,19 +76,21 @@ public class LecturerDashboard {
         VBox userBox = new VBox(3, nameLabel, roleLabel);
         userBox.setPadding(new Insets(10, 20, 16, 20));
 
-        Button homeBtn     = navButton("  Home");
-        Button coursesBtn  = navButton("  My Courses");
-        Button gradesBtn   = navButton("  Manage Grades");
-        Button studentsBtn = navButton("  All Students");
+        Button homeBtn      = navButton("  Home");
+        Button coursesBtn   = navButton("  My Courses");
+        Button gradesBtn    = navButton("  Manage Grades");
+        Button studentsBtn  = navButton("  All Students");
+        Button timetableBtn = navButton("  My Timetable");
 
-        homeBtn.setOnAction(e     -> { setActive(homeBtn);     showHome(); });
-        coursesBtn.setOnAction(e  -> { setActive(coursesBtn);  showCourses(); });
-        gradesBtn.setOnAction(e   -> { setActive(gradesBtn);   showGradeManager(); });
-        studentsBtn.setOnAction(e -> { setActive(studentsBtn); showAllStudents(); });
+        homeBtn.setOnAction(e      -> { setActive(homeBtn);      showHome(); });
+        coursesBtn.setOnAction(e   -> { setActive(coursesBtn);   showCourses(); });
+        gradesBtn.setOnAction(e    -> { setActive(gradesBtn);    showGradeManager(); });
+        studentsBtn.setOnAction(e  -> { setActive(studentsBtn);  showAllStudents(); });
+        timetableBtn.setOnAction(e -> { setActive(timetableBtn); showTimetable(); });
 
         setActive(homeBtn);
 
-        VBox navBox = new VBox(4, homeBtn, coursesBtn, gradesBtn, studentsBtn);
+        VBox navBox = new VBox(4, homeBtn, coursesBtn, gradesBtn, studentsBtn, timetableBtn);
         navBox.setPadding(new Insets(8, 12, 8, 12));
 
         Region spacer = new Region();
@@ -187,7 +192,7 @@ public class LecturerDashboard {
         statusLabel.setFont(Font.font("Segoe UI", 12));
         statusLabel.setVisible(false);
 
-        // Grades table (editable)
+        // Grades table (editable)what
         TableView<StudentRecord> table = new TableView<>();
         table.setEditable(true);
         table.setStyle(tableStyle() + " -fx-font-size: 13px;");
@@ -317,6 +322,50 @@ public class LecturerDashboard {
 
         VBox.setVgrow(table, Priority.ALWAYS);
         pane.getChildren().add(table);
+        setContent(pane);
+    }
+
+    private void showTimetable() {
+        VBox pane = new VBox(16);
+        pane.setPadding(new Insets(30));
+        pane.getChildren().add(sectionTitle("My Teaching Timetable"));
+
+        ComboBox<Semester> semBox = new ComboBox<>();
+        semBox.setPromptText("Select semester...");
+        semBox.setStyle(
+            "-fx-background-color: #1E293B; -fx-text-fill: #F1F5F9;" +
+            "-fx-border-color: #475569; -fx-border-radius: 8; -fx-background-radius: 8;"
+        );
+
+        StackPane gridHolder = new StackPane();
+        VBox.setVgrow(gridHolder, Priority.ALWAYS);
+
+        semBox.setOnAction(e -> {
+            Semester sem = semBox.getValue();
+            if (sem == null) return;
+            gridHolder.getChildren().clear();
+            new Thread(() -> {
+                try {
+                    List<TimetableEntry> entries = ttDao.getTimetableForLecturer(user.getId(), sem.getId());
+                    javafx.application.Platform.runLater(() ->
+                        gridHolder.getChildren().setAll(new TimetableGridView().build(entries))
+                    );
+                } catch (Exception ex) { /* ignore */ }
+            }).start();
+        });
+
+        new Thread(() -> {
+            try {
+                List<Semester> semesters = ttDao.getSemesters();
+                Semester active = ttDao.getActiveSemester();
+                javafx.application.Platform.runLater(() -> {
+                    semBox.getItems().setAll(semesters);
+                    if (active != null) { semBox.setValue(active); semBox.fireEvent(new javafx.event.ActionEvent()); }
+                });
+            } catch (Exception ignored) {}
+        }).start();
+
+        pane.getChildren().addAll(semBox, gridHolder);
         setContent(pane);
     }
 

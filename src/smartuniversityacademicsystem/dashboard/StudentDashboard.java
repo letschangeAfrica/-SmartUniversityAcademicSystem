@@ -10,16 +10,19 @@ import javafx.scene.paint.Color;
 import javafx.scene.text.*;
 import javafx.stage.Stage;
 import smartuniversityacademicsystem.db.StudentDAO;
+import smartuniversityacademicsystem.db.TimetableDAO;
 import smartuniversityacademicsystem.model.*;
 import smartuniversityacademicsystem.view.LoginView;
+import smartuniversityacademicsystem.view.TimetableGridView;
 
 import java.util.List;
 
 public class StudentDashboard {
 
-    private final Stage      stage;
-    private final User       user;
-    private final StudentDAO dao = new StudentDAO();
+    private final Stage        stage;
+    private final User         user;
+    private final StudentDAO   dao    = new StudentDAO();
+    private final TimetableDAO ttDao  = new TimetableDAO();
     private final StackPane  contentArea = new StackPane();
 
     // sidebar button references for active state
@@ -266,37 +269,53 @@ public class StudentDashboard {
     }
 
     private void showTimetable() {
-        VBox pane = new VBox(20);
+        VBox pane = new VBox(16);
         pane.setPadding(new Insets(30));
         pane.getChildren().add(sectionTitle("Weekly Timetable"));
 
-        TableView<TimetableEntry> table = new TableView<>();
-        table.setStyle(tableStyle());
-        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        // Semester filter
+        ComboBox<Semester> semBox = new ComboBox<>();
+        semBox.setPromptText("Select semester...");
+        semBox.setStyle(
+            "-fx-background-color: #1E293B; -fx-text-fill: #F1F5F9;" +
+            "-fx-border-color: #475569; -fx-border-radius: 8; -fx-background-radius: 8;"
+        );
 
-        TableColumn<TimetableEntry, String> dayCol   = col("Day",        "dayOfWeek",  120);
-        TableColumn<TimetableEntry, String> startCol = col("Start",      "startTime",   80);
-        TableColumn<TimetableEntry, String> endCol   = col("End",        "endTime",     80);
-        TableColumn<TimetableEntry, String> codeCol  = col("Code",       "courseCode",  80);
-        TableColumn<TimetableEntry, String> nameCol  = col("Course",     "courseName",   0);
-        TableColumn<TimetableEntry, String> venueCol = col("Venue",      "venue",      100);
+        StackPane gridHolder = new StackPane();
+        VBox.setVgrow(gridHolder, Priority.ALWAYS);
 
-        table.getColumns().addAll(dayCol, startCol, endCol, codeCol, nameCol, venueCol);
-        styleTableColumns(table);
+        semBox.setOnAction(e -> {
+            Semester sem = semBox.getValue();
+            if (sem == null) return;
+            gridHolder.getChildren().clear();
+            new Thread(() -> {
+                try {
+                    List<TimetableEntry> entries = ttDao.getTimetableForStudent(user.getId(), sem.getId());
+                    javafx.application.Platform.runLater(() ->
+                        gridHolder.getChildren().setAll(new TimetableGridView().build(entries))
+                    );
+                } catch (Exception ex) {
+                    javafx.application.Platform.runLater(() -> showDbError(pane, ex));
+                }
+            }).start();
+        });
 
+        // Load semesters and auto-select active
         new Thread(() -> {
             try {
-                List<TimetableEntry> entries = dao.getTimetable(user.getId());
-                javafx.application.Platform.runLater(() ->
-                    table.setItems(FXCollections.observableArrayList(entries))
-                );
-            } catch (Exception ex) {
-                javafx.application.Platform.runLater(() -> showDbError(pane, ex));
-            }
+                List<Semester> semesters = ttDao.getSemesters();
+                Semester active = ttDao.getActiveSemester();
+                javafx.application.Platform.runLater(() -> {
+                    semBox.getItems().setAll(semesters);
+                    if (active != null) {
+                        semBox.setValue(active);
+                        semBox.fireEvent(new javafx.event.ActionEvent());
+                    }
+                });
+            } catch (Exception ignored) {}
         }).start();
 
-        VBox.setVgrow(table, Priority.ALWAYS);
-        pane.getChildren().add(table);
+        pane.getChildren().addAll(semBox, gridHolder);
         setContent(pane);
     }
 
