@@ -9,8 +9,10 @@ import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.text.*;
+import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import smartuniversityacademicsystem.db.AdminDAO;
+import smartuniversityacademicsystem.db.AttendanceDAO;
 import smartuniversityacademicsystem.db.TimetableDAO;
 import smartuniversityacademicsystem.model.*;
 import smartuniversityacademicsystem.scheduling.TimetableGenerator;
@@ -25,7 +27,8 @@ public class AdminDashboard {
     private final Stage    stage;
     private final User     user;
     private final AdminDAO     dao   = new AdminDAO();
-    private final TimetableDAO ttDao = new TimetableDAO();
+    private final TimetableDAO  ttDao  = new TimetableDAO();
+    private final AttendanceDAO attDao = new AttendanceDAO();
     private final StackPane contentArea = new StackPane();
     private Button activeBtn;
 
@@ -76,21 +79,23 @@ public class AdminDashboard {
         VBox userBox = new VBox(3, nameLabel, roleLabel);
         userBox.setPadding(new Insets(10, 20, 16, 20));
 
-        Button homeBtn      = navButton("  Home");
-        Button usersBtn     = navButton("  User Management");
-        Button coursesBtn   = navButton("  Course Management");
-        Button timetableBtn = navButton("  Timetable");
-        Button reportsBtn   = navButton("  Reports");
+        Button homeBtn       = navButton("  Home");
+        Button usersBtn      = navButton("  User Management");
+        Button coursesBtn    = navButton("  Course Management");
+        Button timetableBtn  = navButton("  Timetable");
+        Button reportsBtn    = navButton("  Reports");
+        Button attendanceBtn = navButton("  Attendance");
 
-        homeBtn.setOnAction(e      -> { setActive(homeBtn);      showHome(); });
-        usersBtn.setOnAction(e     -> { setActive(usersBtn);     showUsers(); });
-        coursesBtn.setOnAction(e   -> { setActive(coursesBtn);   showCourses(); });
-        timetableBtn.setOnAction(e -> { setActive(timetableBtn); showTimetableManager(); });
-        reportsBtn.setOnAction(e   -> { setActive(reportsBtn);   showReports(); });
+        homeBtn.setOnAction(e       -> { setActive(homeBtn);       showHome(); });
+        usersBtn.setOnAction(e      -> { setActive(usersBtn);      showUsers(); });
+        coursesBtn.setOnAction(e    -> { setActive(coursesBtn);    showCourses(); });
+        timetableBtn.setOnAction(e  -> { setActive(timetableBtn);  showTimetableManager(); });
+        reportsBtn.setOnAction(e    -> { setActive(reportsBtn);    showReports(); });
+        attendanceBtn.setOnAction(e -> { setActive(attendanceBtn); showAttendanceOverview(); });
 
         setActive(homeBtn);
 
-        VBox navBox = new VBox(4, homeBtn, usersBtn, coursesBtn, timetableBtn, reportsBtn);
+        VBox navBox = new VBox(4, homeBtn, usersBtn, coursesBtn, timetableBtn, reportsBtn, attendanceBtn);
         navBox.setPadding(new Insets(8, 12, 8, 12));
 
         Region spacer = new Region();
@@ -747,6 +752,156 @@ public class AdminDashboard {
             protected void updateItem(UserRecord u, boolean empty) {
                 super.updateItem(u, empty);
                 setText(empty || u == null ? null : u.getFullName());
+                setStyle("-fx-text-fill: #F1F5F9; -fx-background-color: #1E293B;");
+            }
+        };
+    }
+
+    // ── Attendance overview ───────────────────────────────────────────────────
+
+    private void showAttendanceOverview() {
+        VBox pane = new VBox(16);
+        pane.setPadding(new Insets(30));
+        pane.getChildren().add(sectionTitle("Attendance Overview"));
+
+        Label sub = new Label("Select a course to view per-student attendance statistics.");
+        sub.setFont(Font.font("Segoe UI", 13));
+        sub.setTextFill(Color.web("#94A3B8"));
+
+        ComboBox<Course> courseBox = new ComboBox<>();
+        courseBox.setPromptText("Select course...");
+        courseBox.setPrefWidth(300);
+        courseBox.setStyle(
+            "-fx-background-color: #1E293B; -fx-text-fill: #F1F5F9;" +
+            "-fx-border-color: #475569; -fx-border-radius: 8; -fx-background-radius: 8;"
+        );
+        courseBox.setCellFactory(lv -> attCourseCell());
+        courseBox.setButtonCell(attCourseCell());
+
+        Label statusLabel = new Label();
+        statusLabel.setFont(Font.font("Segoe UI", 12));
+        statusLabel.setVisible(false);
+
+        TableView<AttendanceSummary> table = new TableView<>();
+        table.setStyle(tableStyle() + " -fx-font-size: 13px;");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        VBox.setVgrow(table, Priority.ALWAYS);
+
+        TableColumn<AttendanceSummary, String> studentCol = new TableColumn<>("Student");
+        studentCol.setCellValueFactory(new PropertyValueFactory<>("courseCode"));
+
+        TableColumn<AttendanceSummary, String> attCol = new TableColumn<>("Attended");
+        attCol.setCellValueFactory(data ->
+            new javafx.beans.property.SimpleStringProperty(String.valueOf(data.getValue().getAttended())));
+        attCol.setMaxWidth(90);
+
+        TableColumn<AttendanceSummary, String> totalCol = new TableColumn<>("Total");
+        totalCol.setCellValueFactory(data ->
+            new javafx.beans.property.SimpleStringProperty(String.valueOf(data.getValue().getTotal())));
+        totalCol.setMaxWidth(80);
+
+        TableColumn<AttendanceSummary, String> pctCol = new TableColumn<>("Attendance %");
+        pctCol.setCellValueFactory(new PropertyValueFactory<>("percentageDisplay"));
+        pctCol.setMaxWidth(120);
+
+        TableColumn<AttendanceSummary, Double> barCol = new TableColumn<>("Progress");
+        barCol.setCellValueFactory(data ->
+            new javafx.beans.property.SimpleDoubleProperty(data.getValue().getPercentage()).asObject());
+        barCol.setMinWidth(160);
+        barCol.setCellFactory(tc -> new TableCell<>() {
+            private final ProgressBar bar = new ProgressBar();
+            { bar.setPrefWidth(140); bar.setPrefHeight(16); }
+            @Override
+            protected void updateItem(Double item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) { setGraphic(null); return; }
+                double p = item / 100.0;
+                bar.setProgress(p);
+                bar.setStyle(p < 0.75 ? "-fx-accent: #EF4444;" : "-fx-accent: #22C55E;");
+                setGraphic(bar);
+            }
+        });
+
+        TableColumn<AttendanceSummary, String> warnCol = new TableColumn<>("Status");
+        warnCol.setCellValueFactory(new PropertyValueFactory<>("warning"));
+        warnCol.setMaxWidth(180);
+        warnCol.setCellFactory(tc -> new TableCell<>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) { setText(null); return; }
+                setText(item);
+                setTextFill(item.startsWith("WARNING") ? Color.web("#FCA5A5") : Color.web("#4ADE80"));
+            }
+        });
+
+        table.getColumns().addAll(studentCol, attCol, totalCol, pctCol, barCol, warnCol);
+
+        courseBox.setOnAction(e -> {
+            Course selected = courseBox.getValue();
+            if (selected == null) return;
+            table.getItems().clear();
+            new Thread(() -> {
+                try {
+                    List<AttendanceSummary> summaries = attDao.getCourseAttendanceSummary(selected.getId());
+                    javafx.application.Platform.runLater(() -> {
+                        table.setItems(FXCollections.observableArrayList(summaries));
+                        if (summaries.isEmpty())
+                            showStatus(statusLabel, "No attendance records yet for this course.", true);
+                        else
+                            statusLabel.setVisible(false);
+                    });
+                } catch (Exception ex) {
+                    javafx.application.Platform.runLater(() ->
+                        showStatus(statusLabel, "Error: " + ex.getMessage(), false));
+                }
+            }).start();
+        });
+
+        Button exportBtn = actionButton("Export CSV", "#7C3AED");
+        exportBtn.setOnAction(e -> {
+            Course selected = courseBox.getValue();
+            if (selected == null) { showStatus(statusLabel, "Select a course to export.", false); return; }
+            FileChooser fc = new FileChooser();
+            fc.setTitle("Save Attendance Report");
+            fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("CSV Files", "*.csv"));
+            fc.setInitialFileName("attendance_" + selected.getCode() + ".csv");
+            java.io.File file = fc.showSaveDialog(stage);
+            if (file == null) return;
+            new Thread(() -> {
+                try {
+                    String csv = attDao.exportCourseAttendanceCSV(selected.getId(), selected.getCode());
+                    java.nio.file.Files.writeString(file.toPath(), csv);
+                    javafx.application.Platform.runLater(() ->
+                        showStatus(statusLabel, "Exported to " + file.getName(), true));
+                } catch (Exception ex) {
+                    javafx.application.Platform.runLater(() ->
+                        showStatus(statusLabel, "Export failed: " + ex.getMessage(), false));
+                }
+            }).start();
+        });
+
+        new Thread(() -> {
+            try {
+                List<Course> courses = dao.getAllCourses();
+                javafx.application.Platform.runLater(() ->
+                    courseBox.setItems(FXCollections.observableArrayList(courses)));
+            } catch (Exception ignored) {}
+        }).start();
+
+        HBox toolbar = new HBox(10, courseBox, exportBtn);
+        toolbar.setAlignment(Pos.CENTER_LEFT);
+
+        pane.getChildren().addAll(sub, toolbar, statusLabel, table);
+        setContent(pane);
+    }
+
+    private ListCell<Course> attCourseCell() {
+        return new ListCell<Course>() {
+            @Override
+            protected void updateItem(Course c, boolean empty) {
+                super.updateItem(c, empty);
+                setText(empty || c == null ? null : c.getCode() + " – " + c.getName());
                 setStyle("-fx-text-fill: #F1F5F9; -fx-background-color: #1E293B;");
             }
         };

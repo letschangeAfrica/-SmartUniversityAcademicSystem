@@ -17,6 +17,8 @@ import smartuniversityacademicsystem.view.LoginView;
 import smartuniversityacademicsystem.view.TimetableGridView;
 
 import java.util.List;
+import smartuniversityacademicsystem.db.AttendanceDAO;
+import smartuniversityacademicsystem.model.AttendanceSummary;
 
 public class StudentDashboard {
 
@@ -24,7 +26,8 @@ public class StudentDashboard {
     private final User         user;
     private final StudentDAO             dao    = new StudentDAO();
     private final TimetableDAO           ttDao  = new TimetableDAO();
-    private final CourseRegistrationDAO  regDao = new CourseRegistrationDAO();
+    private final CourseRegistrationDAO  regDao  = new CourseRegistrationDAO();
+    private final AttendanceDAO          attDao  = new AttendanceDAO();
     private final StackPane  contentArea = new StackPane();
 
     // sidebar button references for active state
@@ -83,21 +86,23 @@ public class StudentDashboard {
         Separator sep2 = separator();
 
         // nav buttons
-        Button homeBtn      = navButton("  Home",          "home");
-        Button registerBtn  = navButton("  Registration",  "register");
-        Button coursesBtn   = navButton("  My Courses",    "courses");
-        Button gradesBtn    = navButton("  My Grades",     "grades");
-        Button timetableBtn = navButton("  Timetable",     "timetable");
+        Button homeBtn       = navButton("  Home",           "home");
+        Button registerBtn   = navButton("  Registration",   "register");
+        Button coursesBtn    = navButton("  My Courses",     "courses");
+        Button gradesBtn     = navButton("  My Grades",      "grades");
+        Button timetableBtn  = navButton("  Timetable",      "timetable");
+        Button attendanceBtn = navButton("  My Attendance",  "attendance");
 
-        homeBtn.setOnAction(e      -> { setActive(homeBtn);      showHome(); });
-        registerBtn.setOnAction(e  -> { setActive(registerBtn);  showRegistration(); });
-        coursesBtn.setOnAction(e   -> { setActive(coursesBtn);   showCourses(); });
-        gradesBtn.setOnAction(e    -> { setActive(gradesBtn);    showGrades(); });
-        timetableBtn.setOnAction(e -> { setActive(timetableBtn); showTimetable(); });
+        homeBtn.setOnAction(e       -> { setActive(homeBtn);       showHome(); });
+        registerBtn.setOnAction(e   -> { setActive(registerBtn);   showRegistration(); });
+        coursesBtn.setOnAction(e    -> { setActive(coursesBtn);    showCourses(); });
+        gradesBtn.setOnAction(e     -> { setActive(gradesBtn);     showGrades(); });
+        timetableBtn.setOnAction(e  -> { setActive(timetableBtn);  showTimetable(); });
+        attendanceBtn.setOnAction(e -> { setActive(attendanceBtn); showAttendance(); });
 
         setActive(homeBtn);
 
-        VBox navBox = new VBox(4, homeBtn, registerBtn, coursesBtn, gradesBtn, timetableBtn);
+        VBox navBox = new VBox(4, homeBtn, registerBtn, coursesBtn, gradesBtn, timetableBtn, attendanceBtn);
         navBox.setPadding(new Insets(8, 12, 8, 12));
 
         // spacer
@@ -606,6 +611,105 @@ public class StudentDashboard {
         Label err = new Label("Could not load data: " + ex.getMessage());
         err.setTextFill(Color.web("#FCA5A5"));
         pane.getChildren().add(err);
+    }
+
+    // ── Attendance view ───────────────────────────────────────────────────────
+
+    private void showAttendance() {
+        VBox pane = new VBox(16);
+        pane.setPadding(new Insets(30));
+        pane.getChildren().add(sectionTitle("My Attendance"));
+
+        Label warningLabel = new Label();
+        warningLabel.setFont(Font.font("Segoe UI", FontWeight.BOLD, 13));
+        warningLabel.setTextFill(Color.web("#FCA5A5"));
+        warningLabel.setWrapText(true);
+        warningLabel.setPadding(new Insets(10, 14, 10, 14));
+        warningLabel.setStyle("-fx-background-color: #450A0A; -fx-background-radius: 8;");
+        warningLabel.setVisible(false);
+
+        TableView<AttendanceSummary> table = new TableView<>();
+        table.setStyle(tableStyle() + " -fx-font-size: 13px;");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        VBox.setVgrow(table, Priority.ALWAYS);
+
+        TableColumn<AttendanceSummary, String> codeCol = new TableColumn<>("Code");
+        codeCol.setCellValueFactory(new PropertyValueFactory<>("courseCode"));
+        codeCol.setMaxWidth(90);
+
+        TableColumn<AttendanceSummary, String> nameCol = new TableColumn<>("Course");
+        nameCol.setCellValueFactory(new PropertyValueFactory<>("courseName"));
+
+        TableColumn<AttendanceSummary, String> attCol = new TableColumn<>("Attended");
+        attCol.setCellValueFactory(data ->
+            new javafx.beans.property.SimpleStringProperty(String.valueOf(data.getValue().getAttended())));
+        attCol.setMaxWidth(90);
+
+        TableColumn<AttendanceSummary, String> totalCol = new TableColumn<>("Total");
+        totalCol.setCellValueFactory(data ->
+            new javafx.beans.property.SimpleStringProperty(String.valueOf(data.getValue().getTotal())));
+        totalCol.setMaxWidth(80);
+
+        TableColumn<AttendanceSummary, String> pctCol = new TableColumn<>("%");
+        pctCol.setCellValueFactory(new PropertyValueFactory<>("percentageDisplay"));
+        pctCol.setMaxWidth(80);
+
+        TableColumn<AttendanceSummary, Double> barCol = new TableColumn<>("Attendance");
+        barCol.setCellValueFactory(data ->
+            new javafx.beans.property.SimpleDoubleProperty(data.getValue().getPercentage()).asObject());
+        barCol.setMinWidth(150);
+        barCol.setCellFactory(tc -> new TableCell<>() {
+            private final ProgressBar bar = new ProgressBar();
+            { bar.setPrefWidth(130); bar.setPrefHeight(16); }
+            @Override
+            protected void updateItem(Double item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) { setGraphic(null); return; }
+                double p = item / 100.0;
+                bar.setProgress(p);
+                bar.setStyle(p < 0.75 ? "-fx-accent: #EF4444;" : "-fx-accent: #22C55E;");
+                setGraphic(bar);
+            }
+        });
+
+        TableColumn<AttendanceSummary, String> warnCol = new TableColumn<>("Status");
+        warnCol.setCellValueFactory(new PropertyValueFactory<>("warning"));
+        warnCol.setMaxWidth(180);
+        warnCol.setCellFactory(tc -> new TableCell<>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) { setText(null); return; }
+                setText(item);
+                setTextFill(item.startsWith("WARNING") ? Color.web("#FCA5A5") : Color.web("#4ADE80"));
+            }
+        });
+
+        table.getColumns().addAll(codeCol, nameCol, attCol, totalCol, pctCol, barCol, warnCol);
+
+        new Thread(() -> {
+            try {
+                List<AttendanceSummary> summaries = attDao.getStudentAttendanceSummary(user.getId());
+                javafx.application.Platform.runLater(() -> {
+                    table.setItems(FXCollections.observableArrayList(summaries));
+                    long below = summaries.stream()
+                        .filter(s -> s.getTotal() > 0 && s.getPercentage() < 75)
+                        .count();
+                    if (below > 0) {
+                        warningLabel.setText(
+                            "⚠  Warning: " + below + " course(s) below the 75% attendance threshold. " +
+                            "You may be barred from sitting exams."
+                        );
+                        warningLabel.setVisible(true);
+                    }
+                });
+            } catch (Exception ex) {
+                javafx.application.Platform.runLater(() -> showDbError(pane, ex));
+            }
+        }).start();
+
+        pane.getChildren().addAll(warningLabel, table);
+        setContent(pane);
     }
 
     private String gpaLetterBand(double avg) {

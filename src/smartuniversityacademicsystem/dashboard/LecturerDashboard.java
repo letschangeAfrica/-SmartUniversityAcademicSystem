@@ -18,14 +18,21 @@ import smartuniversityacademicsystem.model.*;
 import smartuniversityacademicsystem.view.LoginView;
 import smartuniversityacademicsystem.view.TimetableGridView;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import javafx.stage.FileChooser;
+import smartuniversityacademicsystem.db.AttendanceDAO;
+import smartuniversityacademicsystem.model.AttendanceRecord;
+import smartuniversityacademicsystem.model.SessionRecord;
 
 public class LecturerDashboard {
 
     private final Stage       stage;
     private final User        user;
     private final LecturerDAO  dao   = new LecturerDAO();
-    private final TimetableDAO ttDao = new TimetableDAO();
+    private final TimetableDAO  ttDao  = new TimetableDAO();
+    private final AttendanceDAO attDao = new AttendanceDAO();
     private final StackPane   contentArea = new StackPane();
     private Button            activeBtn;
 
@@ -88,9 +95,12 @@ public class LecturerDashboard {
         studentsBtn.setOnAction(e  -> { setActive(studentsBtn);  showAllStudents(); });
         timetableBtn.setOnAction(e -> { setActive(timetableBtn); showTimetable(); });
 
+        Button attendanceBtn = navButton("  Attendance");
+        attendanceBtn.setOnAction(e -> { setActive(attendanceBtn); showAttendance(); });
+
         setActive(homeBtn);
 
-        VBox navBox = new VBox(4, homeBtn, coursesBtn, gradesBtn, studentsBtn, timetableBtn);
+        VBox navBox = new VBox(4, homeBtn, coursesBtn, gradesBtn, studentsBtn, timetableBtn, attendanceBtn);
         navBox.setPadding(new Insets(8, 12, 8, 12));
 
         Region spacer = new Region();
@@ -484,5 +494,299 @@ public class LecturerDashboard {
     private String tableStyle() {
         return "-fx-background-color: #1E293B; -fx-text-fill: #F1F5F9;" +
                "-fx-border-color: #334155; -fx-border-radius: 8; -fx-background-radius: 8;";
+    }
+
+    // ── Attendance view ───────────────────────────────────────────────────────
+
+    private void showAttendance() {
+        VBox pane = new VBox(16);
+        pane.setPadding(new Insets(30));
+        pane.getChildren().add(sectionTitle("Manage Attendance"));
+
+        Label statusLabel = new Label();
+        statusLabel.setFont(Font.font("Segoe UI", 12));
+        statusLabel.setVisible(false);
+        statusLabel.setWrapText(true);
+
+        // ── Attendance table ──────────────────────────────────────────────
+        TableView<AttendanceRecord> attTable = new TableView<>();
+        attTable.setStyle(tableStyle() + " -fx-font-size: 13px;");
+        attTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        VBox.setVgrow(attTable, Priority.ALWAYS);
+
+        TableColumn<AttendanceRecord, String> nameCol = new TableColumn<>("Student Name");
+        nameCol.setCellValueFactory(new PropertyValueFactory<>("fullName"));
+
+        TableColumn<AttendanceRecord, String> userCol = new TableColumn<>("Username");
+        userCol.setCellValueFactory(new PropertyValueFactory<>("username"));
+        userCol.setMaxWidth(140);
+
+        TableColumn<AttendanceRecord, String> statCol = new TableColumn<>("Status — click to toggle");
+        statCol.setCellValueFactory(new PropertyValueFactory<>("status"));
+        statCol.setMaxWidth(200);
+        statCol.setCellFactory(tc -> new TableCell<>() {
+            private final Button btn = new Button();
+            {
+                btn.setPrefWidth(110);
+                btn.setFont(Font.font("Segoe UI", FontWeight.SEMI_BOLD, 12));
+                btn.setOnAction(e -> {
+                    AttendanceRecord rec = getTableRow().getItem();
+                    if (rec == null) return;
+                    rec.setStatus("PRESENT".equals(rec.getStatus()) ? "ABSENT" : "PRESENT");
+                    getTableView().refresh();
+                });
+            }
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) { setGraphic(null); return; }
+                btn.setText(item);
+                btn.setStyle("PRESENT".equals(item)
+                    ? "-fx-background-color: #166534; -fx-text-fill: #4ADE80; -fx-background-radius: 6; -fx-cursor: hand;"
+                    : "-fx-background-color: #7F1D1D; -fx-text-fill: #FCA5A5; -fx-background-radius: 6; -fx-cursor: hand;"
+                );
+                setGraphic(btn);
+                setText(null);
+            }
+        });
+
+        attTable.getColumns().addAll(nameCol, userCol, statCol);
+
+        // ── Session ComboBox ──────────────────────────────────────────────
+        ComboBox<SessionRecord> sessionBox = new ComboBox<>();
+        sessionBox.setPromptText("Select session...");
+        sessionBox.setPrefWidth(260);
+        sessionBox.setStyle(
+            "-fx-background-color: #1E293B; -fx-text-fill: #F1F5F9;" +
+            "-fx-border-color: #475569; -fx-border-radius: 8; -fx-background-radius: 8;"
+        );
+        sessionBox.setOnAction(e -> {
+            SessionRecord sess = sessionBox.getValue();
+            if (sess == null) return;
+            attTable.getItems().clear();
+            new Thread(() -> {
+                try {
+                    List<AttendanceRecord> recs = attDao.getSessionAttendance(sess.getId(), sess.getCourseId());
+                    javafx.application.Platform.runLater(() -> {
+                        attTable.setItems(FXCollections.observableArrayList(recs));
+                        if (recs.isEmpty()) showStatus(statusLabel, "No students enrolled in this course.", true);
+                        else statusLabel.setVisible(false);
+                    });
+                } catch (Exception ex) {
+                    javafx.application.Platform.runLater(() ->
+                        showStatus(statusLabel, "Error: " + ex.getMessage(), false));
+                }
+            }).start();
+        });
+
+        // ── Course ComboBox ───────────────────────────────────────────────
+        ComboBox<Course> courseBox = new ComboBox<>();
+        courseBox.setPromptText("Select course...");
+        courseBox.setPrefWidth(280);
+        courseBox.setStyle(
+            "-fx-background-color: #1E293B; -fx-text-fill: #F1F5F9;" +
+            "-fx-border-color: #475569; -fx-border-radius: 8; -fx-background-radius: 8;"
+        );
+        courseBox.setCellFactory(lv -> courseCell());
+        courseBox.setButtonCell(courseCell());
+        courseBox.setOnAction(e -> {
+            Course course = courseBox.getValue();
+            if (course == null) return;
+            sessionBox.getItems().clear();
+            attTable.getItems().clear();
+            new Thread(() -> {
+                try {
+                    List<SessionRecord> sessions = attDao.getCourseSessions(course.getId());
+                    javafx.application.Platform.runLater(() -> {
+                        sessionBox.setItems(FXCollections.observableArrayList(sessions));
+                        if (!sessions.isEmpty()) {
+                            sessionBox.setValue(sessions.get(0));
+                            sessionBox.fireEvent(new javafx.event.ActionEvent());
+                        }
+                    });
+                } catch (Exception ex) {
+                    javafx.application.Platform.runLater(() ->
+                        showStatus(statusLabel, "Error: " + ex.getMessage(), false));
+                }
+            }).start();
+        });
+
+        new Thread(() -> {
+            try {
+                List<Course> courses = dao.getCourses(user.getId());
+                javafx.application.Platform.runLater(() ->
+                    courseBox.setItems(FXCollections.observableArrayList(courses)));
+            } catch (Exception ignored) {}
+        }).start();
+
+        // ── Buttons ───────────────────────────────────────────────────────
+        Button newSessionBtn = new Button("+ New Session");
+        newSessionBtn.setStyle(
+            "-fx-background-color: #059669; -fx-text-fill: white;" +
+            "-fx-background-radius: 8; -fx-cursor: hand; -fx-font-size: 12px; -fx-padding: 6 12;"
+        );
+        newSessionBtn.setOnAction(e -> {
+            Course course = courseBox.getValue();
+            if (course == null) { showStatus(statusLabel, "Select a course first.", false); return; }
+            showNewSessionDialog(course).ifPresent(vals -> {
+                new Thread(() -> {
+                    try {
+                        int sid = attDao.createSession(course.getId(), vals[0], vals[1], user.getId());
+                        List<SessionRecord> sessions = attDao.getCourseSessions(course.getId());
+                        javafx.application.Platform.runLater(() -> {
+                            sessionBox.setItems(FXCollections.observableArrayList(sessions));
+                            sessions.stream().filter(s -> s.getId() == sid).findFirst().ifPresent(s -> {
+                                sessionBox.setValue(s);
+                                sessionBox.fireEvent(new javafx.event.ActionEvent());
+                            });
+                            showStatus(statusLabel, "Session created. Mark attendance and save.", true);
+                        });
+                    } catch (Exception ex) {
+                        javafx.application.Platform.runLater(() ->
+                            showStatus(statusLabel, "Error: " + ex.getMessage(), false));
+                    }
+                }).start();
+            });
+        });
+
+        Button allPresentBtn = new Button("All Present");
+        allPresentBtn.setStyle(
+            "-fx-background-color: #166534; -fx-text-fill: #4ADE80;" +
+            "-fx-background-radius: 6; -fx-cursor: hand; -fx-padding: 6 12;"
+        );
+        allPresentBtn.setOnAction(e -> {
+            attTable.getItems().forEach(r -> r.setStatus("PRESENT"));
+            attTable.refresh();
+        });
+
+        Button allAbsentBtn = new Button("All Absent");
+        allAbsentBtn.setStyle(
+            "-fx-background-color: #7F1D1D; -fx-text-fill: #FCA5A5;" +
+            "-fx-background-radius: 6; -fx-cursor: hand; -fx-padding: 6 12;"
+        );
+        allAbsentBtn.setOnAction(e -> {
+            attTable.getItems().forEach(r -> r.setStatus("ABSENT"));
+            attTable.refresh();
+        });
+
+        Button saveBtn = new Button("Save Attendance");
+        saveBtn.setStyle(
+            "-fx-background-color: #2563EB; -fx-text-fill: white;" +
+            "-fx-background-radius: 8; -fx-cursor: hand; -fx-font-size: 13px; -fx-padding: 6 16;"
+        );
+        saveBtn.setOnAction(e -> {
+            SessionRecord sess = sessionBox.getValue();
+            if (sess == null) { showStatus(statusLabel, "Select a session first.", false); return; }
+            List<AttendanceRecord> recs = new ArrayList<>(attTable.getItems());
+            if (recs.isEmpty()) { showStatus(statusLabel, "No students to save.", false); return; }
+            new Thread(() -> {
+                try {
+                    attDao.saveAllAttendance(sess.getId(), recs);
+                    javafx.application.Platform.runLater(() ->
+                        showStatus(statusLabel, "Attendance saved for " + recs.size() + " student(s).", true));
+                } catch (Exception ex) {
+                    javafx.application.Platform.runLater(() ->
+                        showStatus(statusLabel, "Save failed: " + ex.getMessage(), false));
+                }
+            }).start();
+        });
+
+        Button exportBtn = new Button("Export CSV");
+        exportBtn.setStyle(
+            "-fx-background-color: #7C3AED; -fx-text-fill: white;" +
+            "-fx-background-radius: 8; -fx-cursor: hand; -fx-font-size: 13px; -fx-padding: 6 16;"
+        );
+        exportBtn.setOnAction(e -> {
+            Course course = courseBox.getValue();
+            if (course == null) { showStatus(statusLabel, "Select a course to export.", false); return; }
+            FileChooser fc = new FileChooser();
+            fc.setTitle("Save Attendance Report");
+            fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("CSV Files", "*.csv"));
+            fc.setInitialFileName("attendance_" + course.getCode() + ".csv");
+            java.io.File file = fc.showSaveDialog(stage);
+            if (file == null) return;
+            new Thread(() -> {
+                try {
+                    String csv = attDao.exportCourseAttendanceCSV(course.getId(), course.getCode());
+                    java.nio.file.Files.writeString(file.toPath(), csv);
+                    javafx.application.Platform.runLater(() ->
+                        showStatus(statusLabel, "Exported to " + file.getName(), true));
+                } catch (Exception ex) {
+                    javafx.application.Platform.runLater(() ->
+                        showStatus(statusLabel, "Export failed: " + ex.getMessage(), false));
+                }
+            }).start();
+        });
+
+        // ── Layout ────────────────────────────────────────────────────────
+        Label cLabel = new Label("Course:");
+        cLabel.setTextFill(Color.web("#94A3B8"));
+        cLabel.setFont(Font.font("Segoe UI", 13));
+
+        Label sLabel = new Label("Session:");
+        sLabel.setTextFill(Color.web("#94A3B8"));
+        sLabel.setFont(Font.font("Segoe UI", 13));
+
+        HBox selRow = new HBox(10, cLabel, courseBox, sLabel, sessionBox, newSessionBtn);
+        selRow.setAlignment(Pos.CENTER_LEFT);
+
+        HBox actRow = new HBox(10, allPresentBtn, allAbsentBtn, saveBtn, exportBtn);
+        actRow.setAlignment(Pos.CENTER_LEFT);
+
+        pane.getChildren().addAll(selRow, statusLabel, actRow, attTable);
+        setContent(pane);
+    }
+
+    private Optional<String[]> showNewSessionDialog(Course course) {
+        Dialog<String[]> dialog = new Dialog<>();
+        dialog.setTitle("New Class Session");
+        dialog.setHeaderText("Session for " + course.getCode() + " – " + course.getName());
+        dialog.getDialogPane().setStyle("-fx-background-color: #1E293B;");
+
+        ButtonType createBtn = new ButtonType("Create", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(createBtn, ButtonType.CANCEL);
+
+        javafx.scene.control.DatePicker datePicker =
+            new javafx.scene.control.DatePicker(java.time.LocalDate.now());
+        datePicker.setPrefWidth(220);
+        datePicker.setStyle(
+            "-fx-background-color: #0F172A; -fx-text-fill: #F1F5F9;" +
+            "-fx-border-color: #334155; -fx-border-radius: 6; -fx-background-radius: 6;"
+        );
+
+        TextField topicField = new TextField();
+        topicField.setPromptText("e.g. Introduction to SQL  (optional)");
+        topicField.setPrefWidth(220);
+        topicField.setStyle(
+            "-fx-background-color: #0F172A; -fx-text-fill: #F1F5F9;" +
+            "-fx-prompt-text-fill: #475569; -fx-border-color: #334155;" +
+            "-fx-border-radius: 6; -fx-background-radius: 6; -fx-padding: 6 10;"
+        );
+
+        GridPane grid = new GridPane();
+        grid.setHgap(12);
+        grid.setVgap(12);
+        grid.setPadding(new Insets(20));
+
+        Label dateLabel = new Label("Date");
+        dateLabel.setTextFill(Color.web("#94A3B8"));
+        dateLabel.setFont(Font.font("Segoe UI", 13));
+
+        Label topicLabel = new Label("Topic");
+        topicLabel.setTextFill(Color.web("#94A3B8"));
+        topicLabel.setFont(Font.font("Segoe UI", 13));
+
+        grid.add(dateLabel,  0, 0); grid.add(datePicker, 1, 0);
+        grid.add(topicLabel, 0, 1); grid.add(topicField, 1, 1);
+
+        dialog.getDialogPane().setContent(grid);
+
+        dialog.setResultConverter(btn -> {
+            if (btn == createBtn && datePicker.getValue() != null)
+                return new String[]{datePicker.getValue().toString(), topicField.getText().trim()};
+            return null;
+        });
+
+        return dialog.showAndWait().filter(v -> v != null);
     }
 }
