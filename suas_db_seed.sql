@@ -8,7 +8,7 @@ USE suas_db;
 
 -- ─── 1. LECTURERS (10) ───────────────────────────────────────────────────────
 --  Login: username  /  lecturer123
-INSERT IGNORE INTO users (username, full_name, password_hash, role, is_active) VALUES
+INSERT IGNORE INTO users (username, full_name, password, role, active) VALUES
 ('lecturer01','Dr. James Anderson',   SHA2('lecturer123',256),'LECTURER',TRUE),
 ('lecturer02','Dr. Sarah Williams',   SHA2('lecturer123',256),'LECTURER',TRUE),
 ('lecturer03','Dr. Michael Brown',    SHA2('lecturer123',256),'LECTURER',TRUE),
@@ -43,7 +43,7 @@ SELECT 'STAT201','Statistics and Probability', id,3,40 FROM users WHERE username
 
 -- ─── 4. STUDENTS (60) ────────────────────────────────────────────────────────
 --  Login: username  /  student123
-INSERT IGNORE INTO users (username, full_name, password_hash, role, is_active) VALUES
+INSERT IGNORE INTO users (username, full_name, password, role, active) VALUES
 ('student01','Alice Johnson',       SHA2('student123',256),'STUDENT',TRUE),
 ('student02','Brian Smith',         SHA2('student123',256),'STUDENT',TRUE),
 ('student03','Catherine Mbeki',     SHA2('student123',256),'STUDENT',TRUE),
