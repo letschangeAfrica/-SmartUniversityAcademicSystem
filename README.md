@@ -28,6 +28,8 @@ A desktop academic management application built with **JavaFX 21** and **MySQL 8
 - CSV attendance export
 - Anonymous 5-star lecturer evaluation with comment feedback
 - Admin overview with charts and system-wide statistics
+- QR code generation for students and QR-based attendance marking for lecturers
+- Admin can assign / reassign lecturers to courses
 - Animated UI — page transitions, staggered cards, toast notifications
 
 ---
@@ -36,11 +38,12 @@ A desktop academic management application built with **JavaFX 21** and **MySQL 8
 
 | Layer | Technology |
 |-------|-----------|
-| Language | Java 21 (Eclipse Temurin JDK) |
+| Language | Java 8 |
 | UI Framework | JavaFX 21 |
 | Database | MySQL 8.0 |
 | JDBC Driver | mysql-connector-j 9.7.0 |
-| IDE | NetBeans 21 |
+| QR Codes | ZXing (Zebra Crossing) 3.5.3 |
+| IDE | NetBeans |
 | Build | Apache Ant (NetBeans default) |
 
 ---
@@ -122,9 +125,10 @@ java --module-path "C:/javafx-sdk-21/javafx-sdk-21.0.5/lib" \
 
 | Role | Username | Password |
 |------|----------|----------|
-| Admin | `admin` | `admin123` |
-| Lecturer | `lecturer01` … `lecturer10` | `lecturer123` |
-| Student | `student01` … `student60` | `student123` |
+| Admin | `admin1` | `password123` |
+| Lecturer | `lecturer1` (Bob) | `password123` |
+| Lecturer | `lecturer01` – `lecturer10` | `lecturer123` |
+| Student | `student01` – `student10` | `student123` |
 
 Passwords are stored as SHA-256 hashes in the database.
 
@@ -163,7 +167,8 @@ src/smartuniversityacademicsystem/
 ├── scheduling/
 │   └── TimetableGenerator.java
 ├── util/
-│   └── UIUtils.java                     # Animations, avatar, toast, row hover
+│   ├── UIUtils.java                     # Animations, avatar, toast, row hover
+│   └── QRCodeUtil.java                  # QR generate, save, decode (ZXing)
 └── view/
     ├── LoginView.java
     └── TimetableGridView.java
@@ -203,7 +208,12 @@ src/smartuniversityacademicsystem/
 - Warning banner for courses below the 75% threshold
 - Export per-course attendance as CSV
 
-### 7. Lecturer Evaluation
+### 7. QR Code Attendance
+- Students generate a personal QR code (encodes their ID and username) and save it as PNG
+- Lecturers upload a student's QR image — the system decodes it, verifies enrolment, and marks the student **Present** in the selected session instantly
+- QR data format: `SUAS|STUDENT|{userId}|{fullName}|{username}`
+
+### 8. Lecturer Evaluation
 - Students submit an anonymous 1–5 star rating + optional comment per enrolled course
 - Lecturers see their aggregate stats, star-distribution BarChart, and anonymous feedback
 - Admin sees all lecturers ranked by average rating
