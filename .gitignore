@@ -7,7 +7,7 @@ nbproject/genfiles.properties
 .nb-gradle/
 *.class
 *.jar
-!libs/
+!libs/*.jar
 *.log
 *.tmp
 *.bak
