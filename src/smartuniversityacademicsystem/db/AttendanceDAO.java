@@ -166,6 +166,53 @@ public class AttendanceDAO {
         return list;
     }
 
+    // ── QR helpers ───────────────────────────────────────────────────────────
+
+    /**
+     * Looks up a student by username and checks they are enrolled in the course.
+     * Returns the student's user row, or null if not found / not enrolled.
+     */
+    public smartuniversityacademicsystem.model.User getEnrolledStudentByUsername(
+            String username, int courseId) throws SQLException {
+        String sql =
+            "SELECT u.id, u.username, u.full_name " +
+            "FROM users u " +
+            "JOIN enrolments e ON e.student_id = u.id " +
+            "WHERE u.username = ? AND e.course_id = ?";
+        try (Connection c = DatabaseConnection.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, username);
+            ps.setInt(2, courseId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return new smartuniversityacademicsystem.model.User(
+                        rs.getInt("id"),
+                        rs.getString("username"),
+                        rs.getString("full_name"),
+                        smartuniversityacademicsystem.model.Role.STUDENT
+                    );
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Marks a single student PRESENT for the given session.
+     * Uses INSERT … ON DUPLICATE KEY UPDATE so it is safe to call multiple times.
+     */
+    public void markStudentPresent(int sessionId, int studentId) throws SQLException {
+        String sql =
+            "INSERT INTO attendance (session_id, student_id, status) VALUES (?, ?, 'PRESENT')" +
+            " ON DUPLICATE KEY UPDATE status = 'PRESENT'";
+        try (Connection c = DatabaseConnection.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setInt(1, sessionId);
+            ps.setInt(2, studentId);
+            ps.executeUpdate();
+        }
+    }
+
     // ── Export ────────────────────────────────────────────────────────────────
 
     public String exportCourseAttendanceCSV(int courseId, String courseCode)

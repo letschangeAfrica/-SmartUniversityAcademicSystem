@@ -302,8 +302,9 @@ public class AdminDashboard {
         statusLabel.setFont(Font.font("Segoe UI", 12));
         statusLabel.setVisible(false);
 
-        Button addBtn = actionButton("+ Add Course", "#2563EB");
-        Button delBtn = actionButton("Delete Course", "#DC2626");
+        Button addBtn    = actionButton("+ Add Course",      "#2563EB");
+        Button assignBtn = actionButton("Assign Lecturer",   "#059669");
+        Button delBtn    = actionButton("Delete Course",     "#DC2626");
 
         addBtn.setOnAction(e -> {
             showAddCourseDialog().ifPresent(values -> {
@@ -314,6 +315,26 @@ public class AdminDashboard {
                         dao.createCourse(values[0], values[1], lecId);
                         javafx.application.Platform.runLater(() -> {
                             showStatus(statusLabel, "Course '" + values[0] + "' created.", true);
+                            refreshCourses(data);
+                        });
+                    } catch (Exception ex) {
+                        javafx.application.Platform.runLater(() ->
+                            showStatus(statusLabel, "Error: " + ex.getMessage(), false)
+                        );
+                    }
+                }).start();
+            });
+        });
+
+        assignBtn.setOnAction(e -> {
+            Course selected = table.getSelectionModel().getSelectedItem();
+            if (selected == null) { showStatus(statusLabel, "Select a course first.", false); return; }
+            showAssignLecturerDialog(selected).ifPresent(lecId -> {
+                new Thread(() -> {
+                    try {
+                        dao.assignLecturer(selected.getId(), lecId.isEmpty() ? null : Integer.parseInt(lecId));
+                        javafx.application.Platform.runLater(() -> {
+                            showStatus(statusLabel, "Lecturer updated for " + selected.getCode() + ".", true);
                             refreshCourses(data);
                         });
                     } catch (Exception ex) {
@@ -353,7 +374,7 @@ public class AdminDashboard {
             });
         });
 
-        HBox toolbar = new HBox(10, addBtn, delBtn);
+        HBox toolbar = new HBox(10, addBtn, assignBtn, delBtn);
         toolbar.setAlignment(Pos.CENTER_LEFT);
 
         refreshCourses(data);
@@ -590,6 +611,54 @@ public class AdminDashboard {
                 UserRecord lec = lecBox.getValue();
                 String lecId = lec == null ? "" : String.valueOf(lec.getId());
                 return new String[]{code, name, lecId};
+            }
+            return null;
+        });
+
+        return dialog.showAndWait().filter(v -> v != null);
+    }
+
+    private Optional<String> showAssignLecturerDialog(Course course) {
+        Dialog<String> dialog = new Dialog<>();
+        dialog.setTitle("Assign Lecturer");
+        dialog.setHeaderText("Change lecturer for " + course.getCode() + " — " + course.getName());
+        styleDialog(dialog);
+
+        ButtonType saveBtn = new ButtonType("Assign", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveBtn, ButtonType.CANCEL);
+
+        ComboBox<UserRecord> lecBox = new ComboBox<>();
+        lecBox.setPromptText("Select lecturer...");
+        lecBox.setStyle(fieldStyle());
+        lecBox.setPrefWidth(280);
+        lecBox.setCellFactory(lv -> lecturerCell());
+        lecBox.setButtonCell(lecturerCell());
+
+        new Thread(() -> {
+            try {
+                List<UserRecord> lecs = dao.getLecturers();
+                javafx.application.Platform.runLater(() ->
+                    lecBox.setItems(FXCollections.observableArrayList(lecs))
+                );
+            } catch (Exception ignored) {}
+        }).start();
+
+        VBox content = new VBox(10, new Label("Lecturer:"), lecBox);
+        content.setPadding(new Insets(20));
+        content.setStyle("-fx-label-padding: 0;");
+        for (javafx.scene.Node n : content.getChildren()) {
+            if (n instanceof Label) {
+                ((Label) n).setFont(Font.font("Segoe UI", 13));
+                ((Label) n).setTextFill(Color.web("#CBD5E1"));
+            }
+        }
+        dialog.getDialogPane().setContent(content);
+        dialog.getDialogPane().setStyle("-fx-background-color: #1E293B;");
+
+        dialog.setResultConverter(btn -> {
+            if (btn == saveBtn) {
+                UserRecord lec = lecBox.getValue();
+                return lec == null ? "" : String.valueOf(lec.getId());
             }
             return null;
         });

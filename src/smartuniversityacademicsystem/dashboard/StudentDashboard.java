@@ -25,6 +25,10 @@ import smartuniversityacademicsystem.db.EvaluationDAO;
 import smartuniversityacademicsystem.model.AttendanceSummary;
 import smartuniversityacademicsystem.model.EvaluationRecord;
 import smartuniversityacademicsystem.util.UIUtils;
+import smartuniversityacademicsystem.util.QRCodeUtil;
+import javafx.scene.image.ImageView;
+import javafx.stage.FileChooser;
+import java.io.File;
 
 public class StudentDashboard {
 
@@ -55,9 +59,9 @@ public class StudentDashboard {
 
         showHome();
 
-        stage.setScene(new Scene(root, 960, 620));
-        stage.setMinWidth(800);
-        stage.setMinHeight(500);
+        stage.setScene(new Scene(root, 1140, 740));
+        stage.setMinWidth(940);
+        stage.setMinHeight(640);
         stage.show();
     }
 
@@ -102,6 +106,7 @@ public class StudentDashboard {
         Button timetableBtn  = navButton("  Timetable",      "timetable");
         Button attendanceBtn = navButton("  My Attendance",  "attendance");
         Button evaluateBtn   = navButton("  Evaluate",       "evaluate");
+        Button qrBtn         = navButton("  My QR Code",     "qrcode");
 
         homeBtn.setOnAction(e       -> { setActive(homeBtn);       showHome(); });
         registerBtn.setOnAction(e   -> { setActive(registerBtn);   showRegistration(); });
@@ -110,10 +115,11 @@ public class StudentDashboard {
         timetableBtn.setOnAction(e  -> { setActive(timetableBtn);  showTimetable(); });
         attendanceBtn.setOnAction(e -> { setActive(attendanceBtn); showAttendance(); });
         evaluateBtn.setOnAction(e   -> { setActive(evaluateBtn);   showEvaluate(); });
+        qrBtn.setOnAction(e         -> { setActive(qrBtn);         showMyQRCode(); });
 
         setActive(homeBtn);
 
-        VBox navBox = new VBox(4, homeBtn, registerBtn, coursesBtn, gradesBtn, timetableBtn, attendanceBtn, evaluateBtn);
+        VBox navBox = new VBox(4, homeBtn, registerBtn, coursesBtn, gradesBtn, timetableBtn, attendanceBtn, evaluateBtn, qrBtn);
         navBox.setPadding(new Insets(8, 12, 8, 12));
 
         // spacer
@@ -891,6 +897,105 @@ public class StudentDashboard {
         for (int i = 0; i < labels.length; i++) {
             labels[i].setText(i < rating ? "★" : "☆");
         }
+    }
+
+    // ── My QR Code ────────────────────────────────────────────────────────────
+
+    private void showMyQRCode() {
+        VBox pane = new VBox(24);
+        pane.setPadding(new Insets(36));
+        pane.setAlignment(Pos.TOP_CENTER);
+        pane.getChildren().add(sectionTitle("My QR Code"));
+
+        // Description
+        Label desc = new Label("Show this QR code to your lecturer so they can mark your attendance instantly.");
+        desc.setFont(Font.font("Segoe UI", 13));
+        desc.setTextFill(Color.web("#94A3B8"));
+        desc.setWrapText(true);
+        desc.setMaxWidth(480);
+        desc.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
+
+        // Generate QR
+        String qrData = QRCodeUtil.buildStudentData(user.getId(), user.getFullName(), user.getUsername());
+        javafx.scene.image.Image qrImage = QRCodeUtil.generateQRCode(qrData, 260);
+
+        VBox qrCard = new VBox(16);
+        qrCard.setAlignment(Pos.CENTER);
+        qrCard.setPadding(new Insets(28));
+        qrCard.setMaxWidth(340);
+        qrCard.setStyle(
+            "-fx-background-color: #FFFFFF; -fx-background-radius: 16;" +
+            "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.35), 18, 0, 0, 4);"
+        );
+
+        if (qrImage != null) {
+            ImageView qrView = new ImageView(qrImage);
+            qrView.setFitWidth(240);
+            qrView.setFitHeight(240);
+            qrView.setPreserveRatio(true);
+            qrView.setSmooth(false); // keep QR crisp, not blurred
+
+            Label nameTag = new Label(user.getFullName());
+            nameTag.setFont(Font.font("Segoe UI", FontWeight.BOLD, 15));
+            nameTag.setTextFill(Color.web("#1E293B"));
+
+            Label idTag = new Label("ID: " + user.getId() + "  |  " + user.getUsername());
+            idTag.setFont(Font.font("Segoe UI", 12));
+            idTag.setTextFill(Color.web("#64748B"));
+
+            qrCard.getChildren().addAll(qrView, nameTag, idTag);
+        } else {
+            Label err = new Label("Could not generate QR code.");
+            err.setTextFill(Color.web("#EF4444"));
+            qrCard.getChildren().add(err);
+        }
+
+        // Save button
+        Button saveBtn = new Button("  Save as PNG");
+        saveBtn.setFont(Font.font("Segoe UI", FontWeight.SEMI_BOLD, 13));
+        saveBtn.setPrefHeight(40);
+        saveBtn.setPrefWidth(160);
+        saveBtn.setStyle(
+            "-fx-background-color: #2563EB; -fx-text-fill: white;" +
+            "-fx-background-radius: 8; -fx-cursor: hand;"
+        );
+        saveBtn.setOnMouseEntered(e -> saveBtn.setStyle(
+            "-fx-background-color: #1D4ED8; -fx-text-fill: white;" +
+            "-fx-background-radius: 8; -fx-cursor: hand;"
+        ));
+        saveBtn.setOnMouseExited(e -> saveBtn.setStyle(
+            "-fx-background-color: #2563EB; -fx-text-fill: white;" +
+            "-fx-background-radius: 8; -fx-cursor: hand;"
+        ));
+
+        Label saveStatus = new Label();
+        saveStatus.setFont(Font.font("Segoe UI", 12));
+
+        saveBtn.setOnAction(e -> {
+            FileChooser fc = new FileChooser();
+            fc.setTitle("Save QR Code");
+            fc.setInitialFileName(user.getUsername() + "_qrcode.png");
+            fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("PNG Image", "*.png"));
+            File dest = fc.showSaveDialog(stage);
+            if (dest != null) {
+                try {
+                    QRCodeUtil.saveQRCode(qrData, 400, dest);
+                    saveStatus.setText("Saved to: " + dest.getName());
+                    saveStatus.setTextFill(Color.web("#22C55E"));
+                } catch (Exception ex) {
+                    saveStatus.setText("Save failed: " + ex.getMessage());
+                    saveStatus.setTextFill(Color.web("#EF4444"));
+                }
+            }
+        });
+
+        pane.getChildren().addAll(desc, qrCard, saveBtn, saveStatus);
+        UIUtils.animateIn(pane);
+        ScrollPane scroll = new ScrollPane(pane);
+        scroll.setFitToWidth(true);
+        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        scroll.setStyle("-fx-background: #0F172A; -fx-background-color: #0F172A;");
+        setContent(scroll);
     }
 
     private String gpaLetterBand(double avg) {

@@ -83,6 +83,16 @@ public class AdminDAO {
         }
     }
 
+    public void assignLecturer(int courseId, Integer lecturerId) throws SQLException {
+        String sql = "UPDATE courses SET lecturer_id = ? WHERE id = ?";
+        try (PreparedStatement ps = DatabaseConnection.getConnection().prepareStatement(sql)) {
+            if (lecturerId == null) ps.setNull(1, Types.INTEGER);
+            else                    ps.setInt(1, lecturerId);
+            ps.setInt(2, courseId);
+            ps.executeUpdate();
+        }
+    }
+
     public void deleteCourse(int courseId) throws SQLException {
         // remove enrolments first, then course
         try (PreparedStatement ps = DatabaseConnection.getConnection()

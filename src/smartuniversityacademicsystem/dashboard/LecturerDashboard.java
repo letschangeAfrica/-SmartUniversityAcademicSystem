@@ -35,6 +35,9 @@ import smartuniversityacademicsystem.model.LecturerRating;
 import smartuniversityacademicsystem.model.AttendanceRecord;
 import smartuniversityacademicsystem.model.SessionRecord;
 import smartuniversityacademicsystem.util.UIUtils;
+import smartuniversityacademicsystem.util.QRCodeUtil;
+import javafx.scene.image.ImageView;
+import java.io.File;
 
 public class LecturerDashboard {
 
@@ -62,9 +65,9 @@ public class LecturerDashboard {
 
         showHome();
 
-        stage.setScene(new Scene(root, 960, 620));
-        stage.setMinWidth(800);
-        stage.setMinHeight(500);
+        stage.setScene(new Scene(root, 1140, 740));
+        stage.setMinWidth(940);
+        stage.setMinHeight(640);
         stage.show();
     }
 
@@ -110,12 +113,14 @@ public class LecturerDashboard {
 
         Button attendanceBtn  = navButton("  Attendance");
         Button evaluationsBtn = navButton("  My Evaluations");
+        Button qrBtn          = navButton("  QR Attendance");
         attendanceBtn.setOnAction(e  -> { setActive(attendanceBtn);  showAttendance(); });
         evaluationsBtn.setOnAction(e -> { setActive(evaluationsBtn); showMyEvaluations(); });
+        qrBtn.setOnAction(e          -> { setActive(qrBtn);          showQRAttendance(); });
 
         setActive(homeBtn);
 
-        VBox navBox = new VBox(4, homeBtn, coursesBtn, gradesBtn, studentsBtn, timetableBtn, attendanceBtn, evaluationsBtn);
+        VBox navBox = new VBox(4, homeBtn, coursesBtn, gradesBtn, studentsBtn, timetableBtn, attendanceBtn, evaluationsBtn, qrBtn);
         navBox.setPadding(new Insets(8, 12, 8, 12));
 
         Region spacer = new Region();
@@ -889,4 +894,206 @@ public class LecturerDashboard {
 
         return dialog.showAndWait().filter(v -> v != null);
     }
+
+    // ── QR Attendance ─────────────────────────────────────────────────────────
+
+    private void showQRAttendance() {
+        VBox pane = new VBox(24);
+        pane.setPadding(new Insets(36));
+        pane.getChildren().add(sectionTitle("QR Code Attendance"));
+
+        Label desc = new Label(
+            "Select a course and session, then upload the student's QR code image to mark them Present instantly.");
+        desc.setFont(Font.font("Segoe UI", 13));
+        desc.setTextFill(Color.web("#94A3B8"));
+        desc.setWrapText(true);
+
+        // ── Step 1: pick course ───────────────────────────────────────────────
+        Label step1 = stepLabel("1.  Select Course");
+
+        ComboBox<smartuniversityacademicsystem.model.Course> courseCombo = new ComboBox<>();
+        courseCombo.setPromptText("Choose a course...");
+        courseCombo.setPrefWidth(340);
+        courseCombo.setStyle("-fx-background-color:#1E293B; -fx-text-fill:white;");
+        try {
+            courseCombo.getItems().addAll(dao.getCourses(user.getId()));
+        } catch (Exception ex) {
+            courseCombo.setPromptText("Error loading courses");
+        }
+        courseCombo.setCellFactory(lv -> courseCell());
+        courseCombo.setButtonCell(courseCell());
+
+        // ── Step 2: pick session ──────────────────────────────────────────────
+        Label step2 = stepLabel("2.  Select Session");
+
+        ComboBox<smartuniversityacademicsystem.model.SessionRecord> sessionCombo = new ComboBox<>();
+        sessionCombo.setPromptText("Choose course first...");
+        sessionCombo.setPrefWidth(340);
+        sessionCombo.setStyle("-fx-background-color:#1E293B; -fx-text-fill:white;");
+        sessionCombo.setDisable(true);
+
+        courseCombo.setOnAction(e -> {
+            smartuniversityacademicsystem.model.Course selected = courseCombo.getValue();
+            if (selected == null) return;
+            sessionCombo.getItems().clear();
+            try {
+                sessionCombo.getItems().addAll(attDao.getCourseSessions(selected.getId()));
+                sessionCombo.setDisable(false);
+                sessionCombo.setPromptText("Choose a session...");
+            } catch (Exception ex) {
+                sessionCombo.setPromptText("Error loading sessions");
+            }
+        });
+
+        // ── Step 3: upload QR ─────────────────────────────────────────────────
+        Label step3 = stepLabel("3.  Upload Student QR Code Image");
+
+        Label fileLabel = new Label("No file selected");
+        fileLabel.setTextFill(Color.web("#64748B"));
+        fileLabel.setFont(Font.font("Segoe UI", 12));
+
+        Button uploadBtn = new Button("  Browse Image...");
+        uploadBtn.setFont(Font.font("Segoe UI", FontWeight.SEMI_BOLD, 13));
+        uploadBtn.setPrefHeight(38);
+        uploadBtn.setStyle(
+            "-fx-background-color:#334155; -fx-text-fill:white;" +
+            "-fx-background-radius:8; -fx-cursor:hand;"
+        );
+
+        // QR preview
+        ImageView qrPreview = new ImageView();
+        qrPreview.setFitWidth(120);
+        qrPreview.setFitHeight(120);
+        qrPreview.setPreserveRatio(true);
+        qrPreview.setSmooth(false);
+        qrPreview.setVisible(false);
+
+        // Result card
+        VBox resultCard = new VBox(8);
+        resultCard.setPadding(new Insets(16));
+        resultCard.setMaxWidth(380);
+        resultCard.setStyle(
+            "-fx-background-color:#1E293B; -fx-background-radius:10;" +
+            "-fx-border-color:#334155; -fx-border-radius:10;"
+        );
+        resultCard.setVisible(false);
+
+        Label resultName   = new Label();
+        Label resultUser   = new Label();
+        Label resultStatus = new Label();
+        resultName.setFont(Font.font("Segoe UI", FontWeight.BOLD, 14));
+        resultName.setTextFill(Color.WHITE);
+        resultUser.setFont(Font.font("Segoe UI", 12));
+        resultUser.setTextFill(Color.web("#94A3B8"));
+        resultStatus.setFont(Font.font("Segoe UI", FontWeight.SEMI_BOLD, 13));
+        resultCard.getChildren().addAll(resultName, resultUser, resultStatus);
+
+        uploadBtn.setOnAction(e -> {
+            smartuniversityacademicsystem.model.Course course   = courseCombo.getValue();
+            smartuniversityacademicsystem.model.SessionRecord session = sessionCombo.getValue();
+
+            if (course == null) {
+                showResult(resultCard, resultName, resultUser, resultStatus,
+                    "No course selected", "", "Please select a course first.", false);
+                return;
+            }
+            if (session == null) {
+                showResult(resultCard, resultName, resultUser, resultStatus,
+                    "No session selected", "", "Please select a session first.", false);
+                return;
+            }
+
+            FileChooser fc = new FileChooser();
+            fc.setTitle("Select Student QR Code Image");
+            fc.getExtensionFilters().add(
+                new FileChooser.ExtensionFilter("Image Files", "*.png", "*.jpg", "*.jpeg"));
+            File file = fc.showOpenDialog(stage);
+            if (file == null) return;
+
+            fileLabel.setText(file.getName());
+            fileLabel.setTextFill(Color.web("#94A3B8"));
+
+            // Show preview of the uploaded image
+            javafx.scene.image.Image preview = new javafx.scene.image.Image(file.toURI().toString());
+            qrPreview.setImage(preview);
+            qrPreview.setVisible(true);
+
+            // Decode
+            String decoded = QRCodeUtil.decodeQRCode(file);
+
+            if (decoded == null || !QRCodeUtil.isValidStudentQR(decoded)) {
+                showResult(resultCard, resultName, resultUser, resultStatus,
+                    "Invalid QR Code", "",
+                    "Could not read a valid SUAS student QR from this image.", false);
+                return;
+            }
+
+            String username = QRCodeUtil.parseUsername(decoded);
+            String fullName = QRCodeUtil.parseFullName(decoded);
+
+            // Verify the student is enrolled in this course
+            try {
+                smartuniversityacademicsystem.model.User student =
+                    attDao.getEnrolledStudentByUsername(username, course.getId());
+
+                if (student == null) {
+                    showResult(resultCard, resultName, resultUser, resultStatus,
+                        fullName, "@" + username,
+                        "Not enrolled in " + course.getCode() + ".", false);
+                    return;
+                }
+
+                // Mark present
+                attDao.markStudentPresent(session.getId(), student.getId());
+                showResult(resultCard, resultName, resultUser, resultStatus,
+                    student.getFullName(), "@" + student.getUsername(),
+                    "Marked PRESENT in " + course.getCode()
+                        + " — " + session.getSessionDate(), true);
+
+            } catch (Exception ex) {
+                showResult(resultCard, resultName, resultUser, resultStatus,
+                    "Database Error", "", ex.getMessage(), false);
+            }
+        });
+
+        HBox uploadRow = new HBox(12, uploadBtn, fileLabel);
+        uploadRow.setAlignment(Pos.CENTER_LEFT);
+
+        pane.getChildren().addAll(
+            desc,
+            step1, courseCombo,
+            step2, sessionCombo,
+            step3, uploadRow, qrPreview, resultCard
+        );
+
+        UIUtils.animateIn(pane);
+        ScrollPane scroll = new ScrollPane(pane);
+        scroll.setFitToWidth(true);
+        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        scroll.setStyle("-fx-background: #0F172A; -fx-background-color: #0F172A;");
+        setContent(scroll);
+    }
+
+    private void showResult(VBox card, Label name, Label username, Label status,
+                            String nameText, String usernameText, String statusText, boolean success) {
+        name.setText(nameText);
+        username.setText(usernameText);
+        status.setText(statusText);
+        status.setTextFill(success ? Color.web("#22C55E") : Color.web("#EF4444"));
+        card.setStyle(
+            "-fx-background-color:" + (success ? "#052e16" : "#1a0a0a") + ";" +
+            "-fx-background-radius:10; -fx-border-color:" +
+            (success ? "#16a34a" : "#991b1b") + "; -fx-border-radius:10;"
+        );
+        card.setVisible(true);
+        UIUtils.animateIn(card);
+    }
+
+    private Label stepLabel(String text) {
+        Label l = new Label(text);
+        l.setFont(Font.font("Segoe UI", FontWeight.SEMI_BOLD, 13));
+        l.setTextFill(Color.web("#CBD5E1"));
+        return l;
+    }
+
 }
